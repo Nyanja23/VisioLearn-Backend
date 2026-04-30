@@ -1,0 +1,26 @@
+# Core Web Framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# Database & ORM
+SQLAlchemy>=2.0.0
+alembic>=1.11.0
+psycopg2-binary>=2.9.7
+
+# Background Tasks
+celery>=5.3.0
+redis>=4.6.0
+
+# Authentication & Security
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
+
+# AI & Data Processing (Content-Bound AI)
+spacy>=3.7.0
+sentence-transformers>=2.2.2
+PyPDF2>=3.0.0
+python-docx>=1.0.1
+
+# Environment Variables
+python-dotenv>=1.0.0

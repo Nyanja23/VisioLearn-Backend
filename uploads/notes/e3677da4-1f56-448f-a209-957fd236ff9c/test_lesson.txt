@@ -1,0 +1,23 @@
+# Test Lesson: Introduction to Biology
+
+## Unit 1: What are Living Things?
+Living organisms are characterized by several key features:
+- They consume energy
+- They reproduce
+- They respond to stimuli
+- They adapt to their environment
+- They maintain homeostasis
+
+## Unit 2: Classification of Living Things
+The major kingdoms of life include:
+1. Animalia - animals like humans, insects, birds
+2. Plantae - plants like trees, flowers, grass
+3. Fungi - mushrooms, yeast, mold
+4. Protista - single-celled organisms
+5. Archaea - ancient microorganisms
+6. Bacteria - common single-celled organisms
+
+## Unit 3: Cell Structure
+All living organisms are made of cells, which are the basic units of life.
+- Prokaryotic cells: simpler, no nucleus (bacteria)
+- Eukaryotic cells: complex, with nucleus (animals, plants)
