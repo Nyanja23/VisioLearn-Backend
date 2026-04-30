@@ -1,8 +1,7 @@
-# VisioLearn Backend - Final Year Project
+# VisioLearn Backend - An Interactive Audio Learning Platform Visually Impaired Students.
 
 > **AI-powered interactive audio learning platform for visually impaired students**
 
-## 🎯 Status: ✅ OPERATIONAL
 
 The backend is fully set up, tested, and ready for Phase 2 development.
 
@@ -28,17 +27,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 **Then open:** http://localhost:8000/docs
 
 ---
-
-## 📚 Documentation Guide
-
-**Start here based on your need:**
-
-| Document | Purpose | Read Time |
-|----------|---------|-----------|
-| **QUICK_REFERENCE.md** | Copy-paste commands & common tasks | 2 min |
-| **SETUP_AND_RUN.md** | Complete setup guide with troubleshooting | 10 min |
-| **STATUS_REPORT.md** | Detailed system status & architecture | 15 min |
-| **Phase 1-3 docs** | Previous phase documentation & planning | 5-10 min each |
 
 **API Documentation:**
 - **Interactive (Swagger):** http://localhost:8000/docs ← **Start here!**
