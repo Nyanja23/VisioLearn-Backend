@@ -1,0 +1,84 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [ dev, main ]
+    paths:
+      - 'requirements.txt'
+      - '.github/workflows/security.yml'
+  pull_request:
+    branches: [ dev, main ]
+    paths:
+      - 'requirements.txt'
+  schedule:
+    # Run daily at 2 AM UTC (checks for new vulnerabilities)
+    - cron: '0 2 * * *'
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install safety pip-audit
+    
+    - name: Check dependencies with pip-audit
+      run: pip-audit --desc 2>/dev/null || true
+      continue-on-error: true
+    
+    - name: Check dependencies with Safety
+      run: |
+        safety check --file requirements.txt --json > safety-report.json || true
+      continue-on-error: true
+    
+    - name: Upload Safety report
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: safety-report
+        path: safety-report.json
+        retention-days: 30
+    
+    - name: Scan with Trivy (container & dependencies)
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+      continue-on-error: true
+    
+    - name: Upload Trivy results to GitHub Security
+      if: always()
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+      continue-on-error: true
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Check for outdated packages
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip list --outdated
+      continue-on-error: true
