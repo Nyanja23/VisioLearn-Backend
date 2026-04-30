@@ -56,3 +56,34 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+._*
+ehthumbs.db
+
+# File uploads (user-generated content)
+uploads/
+
+# Celery
+celerybeat-schedule
+
+# mypy and type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+
+# Temporary files
+*.tmp
+*.bak
+temp/
+tmp/
+
+# Docker-related
+docker-compose.override.yml
+
+# Session/State files
+.copilot/
+session-state/
+
+# Alembic versions (auto-generated)
+alembic/versions/*.py
+!alembic/versions/
