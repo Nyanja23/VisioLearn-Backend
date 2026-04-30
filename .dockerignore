@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database/Cache (local)
+*.db
+*.sqlite3
+postgres_data/
+redis_data/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+*.bak
+temp/
+tmp/
+
+# OS
+Thumbs.db
+._*
+.DS_Store
+
+# Uploads (don't include in docker image if using external storage)
+uploads/
+
+# CI/CD
+.github/
+
+# Documentation
+docs/
+README.md

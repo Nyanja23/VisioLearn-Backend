@@ -1,0 +1,45 @@
+services:
+  # Production Web Service
+  - type: web
+    name: visiolearn-backend-prod
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    autoDeploy: true
+    healthCheckPath: /docs
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: visiolearn-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: visiolearn-redis
+          property: connectionString
+          type: redis
+      - key: SECRET_KEY
+        sync: false
+      - key: ALGORITHM
+        value: HS256
+    envVarFile: .env.production
+
+  # PostgreSQL Database
+  - type: pserv
+    name: visiolearn-db
+    ipAllowList: []
+    plan: free
+    postgresVersion: 15
+    region: oregon
+
+  # Redis Cache
+  - type: rserv
+    name: visiolearn-redis
+    plan: free
+    region: oregon
+    ipAllowList: []

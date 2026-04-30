@@ -1,0 +1,138 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'alembic/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'alembic.ini'
+      - '.github/workflows/deploy-render.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Deploy to Render
+      env:
+        RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+      run: |
+        if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+          echo "❌ Error: RENDER_DEPLOY_HOOK secret not configured"
+          exit 1
+        fi
+        
+        echo "🚀 Triggering Render deployment..."
+        curl --fail-with-body -X POST "$RENDER_DEPLOY_HOOK"
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ Deployment triggered successfully"
+          echo "📍 Monitor at: https://dashboard.render.com"
+        else
+          echo "❌ Deployment trigger failed"
+          exit 1
+        fi
+    
+    - name: Wait for deployment
+      run: |
+        echo "⏳ Waiting 30 seconds for deployment to start..."
+        sleep 30
+        echo "✅ Deployment should now be in progress"
+    
+    - name: Create GitHub Deployment
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const deployment = await github.rest.repos.createDeployment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: context.ref,
+            environment: 'production',
+            description: 'Deployed via GitHub Actions',
+            auto_merge: false
+          });
+          
+          await github.rest.repos.createDeploymentStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            deployment_id: deployment.data.id,
+            state: 'in_progress',
+            description: 'Deployment in progress',
+            environment_url: 'https://visiolearn.onrender.com'
+          });
+
+  post-deploy-checks:
+    needs: deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Health check
+      run: |
+        echo "🏥 Running health checks..."
+        max_attempts=30
+        attempt=1
+        
+        while [ $attempt -le $max_attempts ]; do
+          echo "Attempt $attempt of $max_attempts..."
+          
+          if curl -f https://visiolearn.onrender.com/docs > /dev/null 2>&1; then
+            echo "✅ Health check passed!"
+            exit 0
+          fi
+          
+          echo "⏳ Service not ready yet, waiting..."
+          sleep 10
+          attempt=$((attempt + 1))
+        done
+        
+        echo "❌ Health check failed after $max_attempts attempts"
+        exit 1
+    
+    - name: Verify API endpoints
+      run: |
+        echo "🔍 Verifying API endpoints..."
+        
+        # Check Swagger docs
+        if curl -f https://visiolearn.onrender.com/openapi.json > /dev/null 2>&1; then
+          echo "✅ OpenAPI schema accessible"
+        else
+          echo "❌ OpenAPI schema not accessible"
+          exit 1
+        fi
+    
+    - name: Slack notification (success)
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: '🚀 Deployment to Render Production successful!'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author
+      continue-on-error: true
+    
+    - name: Slack notification (failure)
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: '❌ Deployment to Render Production failed!'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author
+      continue-on-error: true
