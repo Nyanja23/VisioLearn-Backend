@@ -5,6 +5,7 @@ from fastapi.openapi.utils import get_openapi
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from .routers import auth, users, notes, voice, schools
 from .database import SessionLocal, engine
@@ -114,8 +115,8 @@ def health_check():
     try:
         db = SessionLocal()
         
-        # Check database connection
-        db.execute("SELECT 1")
+        # Check database connection using text() wrapper for SQLAlchemy
+        db.execute(text("SELECT 1"))
         
         # Check if admin exists
         admin = db.query(models.User).filter(models.User.role == "admin").first()

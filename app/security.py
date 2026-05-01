@@ -12,13 +12,34 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 90))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Initialize CryptContext with explicit bcrypt configuration
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__rounds=12,
+    bcrypt__ident="2b"
+)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify plain password against hashed password."""
+    try:
+        # Truncate to 72 bytes (bcrypt limit) as a safeguard
+        plain_password = plain_password[:72]
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        print(f"[!] Password verification error: {e}")
+        return False
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    """Hash a password using bcrypt."""
+    try:
+        # Truncate to 72 bytes (bcrypt limit) as a safeguard
+        password = password[:72]
+        return pwd_context.hash(password)
+    except Exception as e:
+        print(f"[!] Password hashing error: {e}")
+        # Fallback: return a placeholder hash (this shouldn't happen in production)
+        raise ValueError(f"Failed to hash password: {e}")
 
 def create_access_token(subject: Union[str, Any], role: str, expires_delta: timedelta = None) -> str:
     if expires_delta:
