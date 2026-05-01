@@ -7,6 +7,20 @@ import re
 # Valid user roles
 UserRole = Literal["admin", "teacher", "student"]
 
+# --- School Schemas ---
+class SchoolCreate(BaseModel):
+    name: str
+    region: Optional[str] = None
+
+class SchoolResponse(SchoolCreate):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    is_deleted: bool
+    
+    class Config:
+        from_attributes = True
+
 # --- Token Schemas ---
 class Token(BaseModel):
     access_token: str

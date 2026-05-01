@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
 
-from .routers import auth, users, notes, voice
+from .routers import auth, users, notes, voice, schools
 from .database import SessionLocal, engine
 from . import models
 from .security import get_password_hash
@@ -90,6 +90,7 @@ def read_root():
 # Mount nested routers
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(schools.router)
 app.include_router(notes.router)
 app.include_router(voice.router)
 
