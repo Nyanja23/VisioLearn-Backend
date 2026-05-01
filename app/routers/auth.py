@@ -101,8 +101,11 @@ def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
     
     try:
         db.commit()
-    except Exception:
+    except Exception as e:
         db.rollback()
+        print(f"[ERROR] Failed to store refresh token: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to complete login. Please try again."

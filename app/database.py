@@ -1,16 +1,19 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import QueuePool
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Default to a local postgres DB if not set
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://postgres:postgres@localhost:5432/visiolearn"
-)
+# Get database URL from environment or use default
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# If no DATABASE_URL, use SQLite for development
+if not DATABASE_URL:
+    # Use SQLite for development without PostgreSQL
+    DATABASE_URL = "sqlite:///./visiolearn.db"
+    print("[*] No DATABASE_URL provided - using SQLite: visiolearn.db")
 
 # Environment check for pool configuration
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
@@ -28,10 +31,24 @@ if ENVIRONMENT == "production":
     )
 else:
     # Development: simpler pool settings
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,     # Still verify connection health
-    )
+    if DATABASE_URL.startswith("sqlite"):
+        # SQLite-specific configuration
+        engine = create_engine(
+            DATABASE_URL,
+            connect_args={"check_same_thread": False},
+        )
+        # Enable foreign keys for SQLite
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_conn, connection_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+    else:
+        # PostgreSQL configuration
+        engine = create_engine(
+            DATABASE_URL,
+            pool_pre_ping=True,     # Still verify connection health
+        )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

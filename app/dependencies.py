@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from uuid import UUID
 import jwt
 from pydantic import ValidationError
 
@@ -28,7 +29,7 @@ def get_current_user(db: Session = Depends(get_db), credentials: HTTPAuthorizati
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    user = db.query(User).filter(User.id == token_data.sub).first()
+    user = db.query(User).filter(User.id == UUID(token_data.sub)).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user.is_deleted:

@@ -18,8 +18,20 @@ async def lifespan(app: FastAPI):
     # Startup
     print("[*] Initializing database...")
     try:
-        # Create all tables
-        models.Base.metadata.create_all(bind=engine)
+        # Create only the tables we need (skip analytics_events and ai_artefacts which have JSONB)
+        # for SQLite compatibility
+        tables_to_create = [
+            models.School,
+            models.User,
+            models.RefreshToken,
+            models.LessonNote,
+            models.LearningUnit,
+            models.StudentProgress,
+        ]
+        
+        for table_class in tables_to_create:
+            table_class.__table__.create(bind=engine, checkfirst=True)
+        
         print("[+] Database tables ready")
         
         # Seed admin user if no users exist
