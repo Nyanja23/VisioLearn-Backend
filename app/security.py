@@ -20,12 +20,37 @@ pwd_context = CryptContext(
     bcrypt__ident="2b"
 )
 
+
+def _normalize_password_for_bcrypt(password: str) -> str:
+    """Normalize a password for bcrypt: ensure it's at most 72 bytes.
+
+    Bcrypt limits input to 72 bytes. To behave deterministically across
+    hashing and verification, cut the UTF-8 encoded bytes to 72 and
+    decode back to a string ignoring partial multi-byte sequences.
+
+    Returns the (possibly truncated) string to use for hashing/verification.
+    """
+    if password is None:
+        return ""
+    try:
+        raw = password.encode("utf-8")
+    except Exception:
+        # If encoding fails for some reason, fall back to the original string
+        return password
+
+    if len(raw) <= 72:
+        return password
+
+    truncated = raw[:72]
+    safe = truncated.decode("utf-8", errors="ignore")
+    print("[!] Password longer than 72 bytes — truncating to bcrypt limit")
+    return safe
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify plain password against hashed password."""
     try:
-        # Truncate to 72 bytes (bcrypt limit) as a safeguard
-        plain_password = plain_password[:72]
-        return pwd_context.verify(plain_password, hashed_password)
+        normalized = _normalize_password_for_bcrypt(plain_password)
+        return pwd_context.verify(normalized, hashed_password)
     except Exception as e:
         print(f"[!] Password verification error: {e}")
         return False
@@ -33,9 +58,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     """Hash a password using bcrypt."""
     try:
-        # Truncate to 72 bytes (bcrypt limit) as a safeguard
-        password = password[:72]
-        return pwd_context.hash(password)
+        normalized = _normalize_password_for_bcrypt(password)
+        return pwd_context.hash(normalized)
     except Exception as e:
         print(f"[!] Password hashing error: {e}")
         # Fallback: return a placeholder hash (this shouldn't happen in production)

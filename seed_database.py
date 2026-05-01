@@ -10,7 +10,7 @@ import sys
 
 
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
+from app.security import get_password_hash
 
 # Add app to path
 sys.path.insert(0, os.path.dirname(__file__))
@@ -18,12 +18,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from app.database import SessionLocal, engine
 from app import models
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+# Use central password hashing helper for consistent behavior
 
 def seed_database():
     """Seed the database with initial data."""
@@ -54,7 +49,7 @@ def seed_database():
             email="admin@visiolearn.org",
             full_name="System Administrator",
             role="admin",
-            hashed_password=hash_password(admin_password),
+            hashed_password=get_password_hash(admin_password),
             school_id=None  # Admin doesn't belong to a school
         )
         db.add(admin)
@@ -66,7 +61,7 @@ def seed_database():
             email="teacher@visiolearn.org",
             full_name="Demo Teacher",
             role="teacher",
-            hashed_password=hash_password(teacher_password),
+            hashed_password=get_password_hash(teacher_password),
             school_id="f5c8f3b1-2a4c-4d6e-8f0a-1b3c5d7e9f1a"
         )
         db.add(teacher)
@@ -78,7 +73,7 @@ def seed_database():
             email="student@visiolearn.org",
             full_name="Demo Student",
             role="student",
-            hashed_password=hash_password(student_password),
+            hashed_password=get_password_hash(student_password),
             school_id="f5c8f3b1-2a4c-4d6e-8f0a-1b3c5d7e9f1a"
         )
         db.add(student)
