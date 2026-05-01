@@ -1,0 +1,843 @@
+%!TEX program = xelatex
+\documentclass[12pt,a4paper,oneside]{article}
+
+% ============================================================================
+% PACKAGES & CONFIGURATION
+% ============================================================================
+\usepackage[utf-8]{inputenc}
+\usepackage[left=2.5cm,right=2.5cm,top=3cm,bottom=3cm]{geometry}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{color}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{fancyvrb}
+
+% Color definitions
+\definecolor{codegreen}{rgb}{0.0, 0.5, 0.0}
+\definecolor{codegray}{rgb}{0.5, 0.5, 0.5}
+\definecolor{codepurple}{rgb}{0.58, 0, 0.82}
+\definecolor{backcolour}{rgb}{0.95, 0.95, 0.95}
+\definecolor{lightblue}{rgb}{0.9, 0.95, 1.0}
+\definecolor{darkblue}{rgb}{0.0, 0.2, 0.6}
+
+% Code listing configuration
+\lstset{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codepurple},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codegreen},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    language=json,
+}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textcolor{darkblue}{\textit{VisioLearn API Documentation}}}
+\lhead{\textcolor{darkblue}{v1.0}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.5pt}
+
+% Section styling
+\titleformat{\section}{\Large\bfseries\color{darkblue}}{}{0pt}{}[\titlerule]
+\titleformat{\subsection}{\large\bfseries\color{darkblue}}{}{0pt}{}
+\titleformat{\subsubsection}{\bfseries\color{darkblue}}{}{0pt}{}
+
+% ============================================================================
+% TITLE PAGE
+% ============================================================================
+\title{%
+    \vspace{2cm}
+    \Huge\textbf{\textcolor{darkblue}{VisioLearn Backend API}} \\
+    \vspace{0.5cm}
+    \Large\textit{Comprehensive API Documentation} \\
+    \vspace{2cm}
+    \large\textbf{AI-Powered Audio Learning Platform}
+}
+
+\author{%
+    VisioLearn Development Team \\
+    \vspace{0.5cm}
+    \href{https://visiolearn-backend.onrender.com}{https://visiolearn-backend.onrender.com}
+}
+
+\date{\vspace{1cm}\large \textbf{Version 1.0} \\ May 2026}
+
+% ============================================================================
+% DOCUMENT
+% ============================================================================
+\begin{document}
+
+% Title page
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+% ============================================================================
+% TABLE OF CONTENTS
+% ============================================================================
+\tableofcontents
+\newpage
+
+% ============================================================================
+% SECTION 1: INTRODUCTION
+% ============================================================================
+\section{Introduction}
+
+VisioLearn is an AI-powered audio learning platform designed for educational institutions. The backend API enables:
+
+\begin{itemize}
+    \item \textbf{Content Management}: Upload and process lesson content (PDF, DOCX, TXT)
+    \item \textbf{Authentication}: Secure JWT-based user authentication with token rotation
+    \item \textbf{Voice Sessions}: Track student learning interactions through voice commands
+    \item \textbf{User Management}: Manage teachers, students, and administrative users
+    \item \textbf{Analytics}: Track student progress and learning analytics
+\end{itemize}
+
+\subsection{API Base URL}
+\begin{tcolorbox}[colback=lightblue, colframe=darkblue]
+\texttt{https://visiolearn-backend.onrender.com/api/v1}
+\end{tcolorbox}
+
+\subsection{API Documentation}
+Interactive API documentation is available at:
+\begin{itemize}
+    \item \textbf{Swagger UI}: \url{https://visiolearn-backend.onrender.com/docs}
+    \item \textbf{ReDoc}: \url{https://visiolearn-backend.onrender.com/redoc}
+    \item \textbf{OpenAPI Schema}: \url{https://visiolearn-backend.onrender.com/openapi.json}
+\end{itemize}
+
+% ============================================================================
+% SECTION 2: AUTHENTICATION
+% ============================================================================
+\section{Authentication}
+
+All API endpoints (except login) require authentication via JWT bearer token.
+
+\subsection{Token Types}
+
+VisioLearn uses two types of tokens:
+
+\begin{itemize}
+    \item \textbf{Access Token}: Short-lived token (60 minutes) for API requests
+    \item \textbf{Refresh Token}: Long-lived token (90 days) for obtaining new access tokens
+\end{itemize}
+
+\subsection{Authorization Header Format}
+
+All authenticated requests must include:
+
+\begin{lstlisting}[language=bash]
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\subsection{User Roles}
+
+VisioLearn supports three user roles:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Role} & \textbf{Description} \\
+\hline
+\texttt{admin} & Full access to all endpoints and resources \\
+\hline
+\texttt{teacher} & Can upload lessons, view student progress \\
+\hline
+\texttt{student} & Can access lessons, participate in voice sessions \\
+\hline
+\end{tabular}
+\caption{User Roles in VisioLearn}
+\end{table}
+
+% ============================================================================
+% SECTION 3: API ENDPOINTS
+% ============================================================================
+\section{API Endpoints}
+
+\subsection{Authentication Endpoints}
+
+\subsubsection{1. Login}
+
+\textbf{POST} \texttt{/auth/login}
+
+Authenticate a user and receive access and refresh tokens.
+
+\textbf{Request Body:}
+\begin{lstlisting}
+{
+  "email": "admin@visiolearn.org",
+  "password": "SecurePass123!"
+}
+\end{lstlisting}
+
+\textbf{Response (200 OK):}
+\begin{lstlisting}
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+\end{lstlisting}
+
+\textbf{Error Responses:}
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Status} & \textbf{Reason} \\
+\hline
+401 & Incorrect email or password \\
+403 & Account is deactivated \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{2. Refresh Token}
+
+\textbf{POST} \texttt{/auth/refresh}
+
+Obtain a new access token using a valid refresh token.
+
+\textbf{Request Body:}
+\begin{lstlisting}
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+\end{lstlisting}
+
+\textbf{Response (200 OK):}
+\begin{lstlisting}
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+\end{lstlisting}
+
+\textbf{Notes:}
+\begin{itemize}
+    \item Old refresh token is automatically revoked (token rotation)
+    \item Returns new access token and refresh token
+    \item If refresh token is expired or revoked, returns 401
+\end{itemize}
+
+\subsubsection{3. Logout}
+
+\textbf{POST} \texttt{/auth/logout}
+
+Revoke a refresh token and log out the user.
+
+\textbf{Headers:}
+\begin{lstlisting}
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\textbf{Request Body:}
+\begin{lstlisting}
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+\end{lstlisting}
+
+\textbf{Response (200 OK):}
+\begin{lstlisting}
+{
+  "success": true,
+  "message": "Successfully logged out"
+}
+\end{lstlisting}
+
+% ============================================================================
+% SECTION 4: LESSON NOTES ENDPOINTS
+% ============================================================================
+\subsection{Lesson Notes Endpoints}
+
+\subsubsection{1. Upload Lesson Note}
+
+\textbf{POST} \texttt{/notes/upload}
+
+Upload a lesson document for processing and content extraction.
+
+\textbf{Headers:}
+\begin{lstlisting}
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+\end{lstlisting}
+
+\textbf{Form Parameters:}
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Type} & \textbf{Description} \\
+\hline
+\texttt{file} & File & PDF, DOCX, or TXT document \\
+\texttt{title} & String & Lesson title (optional, defaults to filename) \\
+\texttt{subject} & String & Subject name (required) \\
+\texttt{grade\_level} & String & Target grade level (required) \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{Response (201 Created):}
+\begin{lstlisting}
+{
+  "id": "f6540ed3-1020-4713-b14b-c1bc853422a8",
+  "title": "Introduction to Biology",
+  "subject": "Biology",
+  "grade_level": "10",
+  "status": "PROCESSING",
+  "file_path": "uploads/f6540ed3-1020-4713-b14b-c1bc853422a8.pdf",
+  "created_at": "2026-05-01T10:30:00Z"
+}
+\end{lstlisting}
+
+\textbf{Status Codes:}
+\begin{itemize}
+    \item \textbf{201 Created}: File uploaded successfully
+    \item \textbf{400 Bad Request}: Missing required parameters or invalid file type
+    \item \textbf{401 Unauthorized}: Not authenticated or invalid token
+    \item \textbf{403 Forbidden}: User is not a teacher or admin
+    \item \textbf{500 Internal Server Error}: Server processing error
+\end{itemize}
+
+\textbf{Supported File Types:}
+\begin{itemize}
+    \item \texttt{.pdf} - PDF documents
+    \item \texttt{.docx} - Microsoft Word documents
+    \item \texttt{.txt} - Plain text files
+\end{itemize}
+
+% ============================================================================
+% SECTION 5: VOICE SESSIONS ENDPOINTS
+% ============================================================================
+\subsection{Voice Sessions Endpoints}
+
+Voice sessions track student interactions during learning activities.
+
+\subsubsection{1. Start Voice Session}
+
+\textbf{POST} \texttt{/voice/session/start}
+
+Begin a new voice learning session for a student.
+
+\textbf{Headers:}
+\begin{lstlisting}
+Authorization: Bearer <access_token>
+Content-Type: application/json
+\end{lstlisting}
+
+\textbf{Request Body:}
+\begin{lstlisting}
+{
+  "student_id": "3213b206-f779-4698-aff4-a3c3644938af",
+  "note_id": "f6540ed3-1020-4713-b14b-c1bc853422a8",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884"
+}
+\end{lstlisting}
+
+\textbf{Response (201 Created):}
+\begin{lstlisting}
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "student_id": "3213b206-f779-4698-aff4-a3c3644938af",
+  "note_id": "f6540ed3-1020-4713-b14b-c1bc853422a8",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884",
+  "status": "ACTIVE",
+  "started_at": "2026-05-01T10:56:00Z"
+}
+\end{lstlisting}
+
+\textbf{Session States:}
+\begin{itemize}
+    \item \textbf{ACTIVE}: Session is running
+    \item \textbf{PAUSED}: Student has paused the session
+    \item \textbf{COMPLETED}: Session has ended
+\end{itemize}
+
+\subsubsection{2. Log Voice Interaction}
+
+\textbf{POST} \texttt{/voice/session/event}
+
+Log a student action during a voice session.
+
+\textbf{Request Body:}
+\begin{lstlisting}
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "interaction_type": "answer",
+  "command": "The capital of France is Paris",
+  "confidence": 0.95,
+  "response": "Correct! Paris is indeed the capital."
+}
+\end{lstlisting}
+
+\textbf{Interaction Types:}
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Type} & \textbf{Description} \\
+\hline
+\texttt{answer} & Student answers a question \\
+\texttt{next} & Student requests next unit \\
+\texttt{repeat} & Student requests to repeat unit \\
+\texttt{free\_ask} & Student asks a free-form question \\
+\texttt{pause} & Student pauses the session \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{Response (201 Created):}
+\begin{lstlisting}
+{
+  "interaction_id": "uuid-value",
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "sequence_number": 1,
+  "student_transcript": "The capital of France is Paris",
+  "detected_intent": "answer",
+  "ai_response_text": "Correct! Paris is indeed the capital.",
+  "confidence_score": 0.95,
+  "created_at": "2026-05-01T10:56:30Z"
+}
+\end{lstlisting}
+
+\subsubsection{3. End Voice Session}
+
+\textbf{POST} \texttt{/voice/session/end}
+
+Close a voice session and calculate summary statistics.
+
+\textbf{Request Body:}
+\begin{lstlisting}
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "duration_seconds": 1200,
+  "questions_answered": 8,
+  "total_score": 7.5
+}
+\end{lstlisting}
+
+\textbf{Response (200 OK):}
+\begin{lstlisting}
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "COMPLETED",
+  "duration_seconds": 1200,
+  "questions_answered": 8,
+  "average_score": 0.9375,
+  "ended_at": "2026-05-01T11:00:00Z"
+}
+\end{lstlisting}
+
+\subsubsection{4. Get Voice Session}
+
+\textbf{GET} \texttt{/voice/session/\{session\_id\}}
+
+Retrieve details of a specific voice session.
+
+\textbf{Response (200 OK):}
+\begin{lstlisting}
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "student_id": "3213b206-f779-4698-aff4-a3c3644938af",
+  "note_id": "f6540ed3-1020-4713-b14b-c1bc853422a8",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884",
+  "status": "ACTIVE",
+  "started_at": "2026-05-01T10:56:00Z"
+}
+\end{lstlisting}
+
+\subsubsection{5. Get Session Interactions}
+
+\textbf{GET} \texttt{/voice/session/\{session\_id\}/interactions}
+
+Retrieve all interactions logged during a session.
+
+\textbf{Response (200 OK):}
+\begin{lstlisting}
+[
+  {
+    "interaction_id": "uuid-1",
+    "session_id": "550e8400-e29b-41d4-a716-446655440000",
+    "sequence_number": 1,
+    "student_transcript": "The capital of France",
+    "detected_intent": "answer",
+    "ai_response_text": "Correct!",
+    "confidence_score": 0.95,
+    "created_at": "2026-05-01T10:56:30Z"
+  },
+  ...
+]
+\end{lstlisting}
+
+% ============================================================================
+% SECTION 6: ERROR HANDLING
+% ============================================================================
+\section{Error Handling}
+
+All API errors follow a standard response format:
+
+\begin{lstlisting}
+{
+  "detail": "Error message describing what went wrong"
+}
+\end{lstlisting}
+
+\subsection{HTTP Status Codes}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Code} & \textbf{Meaning} \\
+\hline
+\texttt{200} & OK - Request successful \\
+\texttt{201} & Created - Resource successfully created \\
+\texttt{400} & Bad Request - Invalid request parameters \\
+\texttt{401} & Unauthorized - Authentication failed \\
+\texttt{403} & Forbidden - Insufficient permissions \\
+\texttt{404} & Not Found - Resource does not exist \\
+\texttt{500} & Internal Server Error - Server-side error \\
+\hline
+\end{tabular}
+\caption{HTTP Status Codes}
+\end{table}
+
+\subsection{Common Error Messages}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Error} & \textbf{Solution} \\
+\hline
+\texttt{Incorrect email or password} & Verify credentials are correct \\
+\hline
+\texttt{Invalid or expired token} & Re-authenticate to get new token \\
+\hline
+\texttt{Insufficient permissions} & Check user role for endpoint access \\
+\hline
+\texttt{Resource not found} & Verify resource ID is correct \\
+\hline
+\end{tabular}
+\end{table}
+
+% ============================================================================
+% SECTION 7: IMPLEMENTATION EXAMPLES
+% ============================================================================
+\section{Implementation Examples}
+
+\subsection{Example 1: Complete Login Flow (Python)}
+
+\begin{lstlisting}[language=python]
+import requests
+import json
+
+API_BASE = "https://visiolearn-backend.onrender.com/api/v1"
+
+# Step 1: Login
+response = requests.post(
+    f"{API_BASE}/auth/login",
+    json={
+        "email": "admin@visiolearn.org",
+        "password": "SecurePass123!"
+    }
+)
+
+if response.status_code == 200:
+    tokens = response.json()
+    access_token = tokens["access_token"]
+    refresh_token = tokens["refresh_token"]
+    print("Login successful!")
+else:
+    print(f"Login failed: {response.json()}")
+    exit(1)
+
+# Step 2: Use access token in subsequent requests
+headers = {
+    "Authorization": f"Bearer {access_token}",
+    "Content-Type": "application/json"
+}
+
+# Step 3: Refresh token when expired
+response = requests.post(
+    f"{API_BASE}/auth/refresh",
+    json={"refresh_token": refresh_token}
+)
+
+if response.status_code == 200:
+    new_tokens = response.json()
+    access_token = new_tokens["access_token"]
+    print("Token refreshed successfully!")
+\end{lstlisting}
+
+\subsection{Example 2: Upload Lesson Note (cURL)}
+
+\begin{lstlisting}[language=bash]
+curl -X POST \
+  https://visiolearn-backend.onrender.com/api/v1/notes/upload \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -F "file=@lesson.pdf" \
+  -F "title=Biology Basics" \
+  -F "subject=Biology" \
+  -F "grade_level=10"
+\end{lstlisting}
+
+\subsection{Example 3: Voice Session Flow (JavaScript)}
+
+\begin{lstlisting}[language=javascript]
+const API_BASE = 
+  "https://visiolearn-backend.onrender.com/api/v1";
+const accessToken = "YOUR_ACCESS_TOKEN";
+
+const headers = {
+  "Authorization": `Bearer ${accessToken}`,
+  "Content-Type": "application/json"
+};
+
+// Start session
+const startSession = async () => {
+  const response = await fetch(
+    `${API_BASE}/voice/session/start`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        student_id: "3213b206-...",
+        note_id: "f6540ed3-...",
+        unit_id: "308685dc-..."
+      })
+    }
+  );
+  return await response.json();
+};
+
+// Log interaction
+const logInteraction = async (sessionId, command) => {
+  const response = await fetch(
+    `${API_BASE}/voice/session/event`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        session_id: sessionId,
+        interaction_type: "answer",
+        command: command,
+        confidence: 0.95,
+        response: "Recorded"
+      })
+    }
+  );
+  return await response.json();
+};
+
+// End session
+const endSession = async (sessionId, duration) => {
+  const response = await fetch(
+    `${API_BASE}/voice/session/end`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        session_id: sessionId,
+        duration_seconds: duration,
+        questions_answered: 8,
+        total_score: 7.5
+      })
+    }
+  );
+  return await response.json();
+};
+\end{lstlisting}
+
+% ============================================================================
+% SECTION 8: BEST PRACTICES
+% ============================================================================
+\section{Best Practices}
+
+\subsection{Authentication}
+
+\begin{itemize}
+    \item \textbf{Store tokens securely}: Never expose tokens in client-side code
+    \item \textbf{Use refresh tokens}: Implement token rotation for security
+    \item \textbf{Handle expiration}: Catch 401 responses and re-authenticate
+    \item \textbf{Logout on close}: Revoke refresh token when user logs out
+\end{itemize}
+
+\subsection{API Requests}
+
+\begin{itemize}
+    \item \textbf{Validate input}: Check required fields before sending requests
+    \item \textbf{Handle errors}: Implement proper error handling for all responses
+    \item \textbf{Use pagination}: For endpoints returning large datasets
+    \item \textbf{Set timeouts}: Prevent requests from hanging indefinitely
+\end{itemize}
+
+\subsection{Voice Sessions}
+
+\begin{itemize}
+    \item \textbf{Verify IDs}: Ensure student, note, and unit IDs are valid
+    \item \textbf{Track state}: Maintain session state in your client
+    \item \textbf{Log interactions}: Record all user actions for analytics
+    \item \textbf{Handle pauses}: Manage session pauses gracefully
+\end{itemize}
+
+\subsection{File Uploads}
+
+\begin{itemize}
+    \item \textbf{Validate file type}: Check file extension before upload
+    \item \textbf{Check file size}: Ensure file is not too large
+    \item \textbf{Use multipart}: Use proper multipart/form-data encoding
+    \item \textbf{Monitor status}: Poll endpoint to check processing status
+\end{itemize}
+
+% ============================================================================
+% SECTION 9: RATE LIMITING & QUOTAS
+% ============================================================================
+\section{Rate Limiting \& Quotas}
+
+\subsection{Current Limits}
+
+\begin{itemize}
+    \item \textbf{File upload size}: Maximum 50 MB
+    \item \textbf{Maximum concurrent sessions}: Unlimited per user
+    \item \textbf{Token expiration}: 60 minutes (access), 90 days (refresh)
+\end{itemize}
+
+\subsection{Recommendations}
+
+\begin{itemize}
+    \item Implement exponential backoff for retries
+    \item Cache responses when appropriate
+    \item Monitor API usage and logs regularly
+    \item Contact support for quota increases
+\end{itemize}
+
+% ============================================================================
+% SECTION 10: SUPPORT & RESOURCES
+% ============================================================================
+\section{Support \& Resources}
+
+\subsection{Documentation}
+
+\begin{itemize}
+    \item \textbf{Interactive Docs}: \url{https://visiolearn-backend.onrender.com/docs}
+    \item \textbf{ReDoc}: \url{https://visiolearn-backend.onrender.com/redoc}
+    \item \textbf{OpenAPI Schema}: \url{https://visiolearn-backend.onrender.com/openapi.json}
+\end{itemize}
+
+\subsection{Deployment Information}
+
+\begin{itemize}
+    \item \textbf{Platform}: Render (render.com)
+    \item \textbf{Status Page}: \url{https://status.render.com}
+    \item \textbf{Response Time}: Typically < 200ms
+\end{itemize}
+
+\subsection{Contact Information}
+
+\begin{itemize}
+    \item \textbf{GitHub}: \url{https://github.com/Nyanja23/VisioLearn-Backend}
+    \item \textbf{Issues}: Use GitHub Issues for bug reports
+    \item \textbf{Discussions}: GitHub Discussions for questions
+\end{itemize}
+
+% ============================================================================
+% APPENDIX
+% ============================================================================
+\appendix
+
+\section{Quick Reference}
+
+\subsection{Endpoint Summary}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Method} & \textbf{Endpoint} & \textbf{Purpose} \\
+\hline
+POST & \texttt{/auth/login} & User login \\
+POST & \texttt{/auth/refresh} & Refresh access token \\
+POST & \texttt{/auth/logout} & User logout \\
+POST & \texttt{/notes/upload} & Upload lesson file \\
+POST & \texttt{/voice/session/start} & Start voice session \\
+POST & \texttt{/voice/session/event} & Log interaction \\
+POST & \texttt{/voice/session/end} & End session \\
+GET & \texttt{/voice/session/\{id\}} & Get session details \\
+GET & \texttt{/voice/session/\{id\}/interactions} & Get interactions \\
+\hline
+\end{tabular}
+\caption{API Endpoints Quick Reference}
+\end{table}
+
+\subsection{HTTP Headers Reference}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Header} & \textbf{Value} \\
+\hline
+\texttt{Content-Type} & \texttt{application/json} \\
+\texttt{Authorization} & \texttt{Bearer <access\_token>} \\
+\texttt{Accept} & \texttt{application/json} \\
+\hline
+\end{tabular}
+\caption{HTTP Headers Reference}
+\end{table}
+
+\subsection{UUID Format}
+
+All IDs in VisioLearn are UUIDs (Universally Unique Identifiers):
+
+\begin{center}
+\texttt{550e8400-e29b-41d4-a716-446655440000}
+\end{center}
+
+Format: \texttt{8-4-4-4-12 hexadecimal digits}
+
+\section{Changelog}
+
+\subsection{Version 1.0 (May 2026)}
+
+\begin{itemize}
+    \item Initial API release
+    \item Authentication with JWT tokens
+    \item Lesson note upload and processing
+    \item Voice session tracking
+    \item Student progress analytics
+\end{itemize}
+
+% ============================================================================
+% END OF DOCUMENT
+% ============================================================================
+\end{document}
