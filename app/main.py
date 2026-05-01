@@ -105,6 +105,35 @@ app.add_middleware(
 def read_root():
     return {"message": "VisioLearn Backend API is online", "status": "success"}
 
+# Health check endpoint
+@app.get("/health")
+def health_check():
+    """
+    Health check endpoint that verifies database connection and admin user exists.
+    """
+    try:
+        db = SessionLocal()
+        
+        # Check database connection
+        db.execute("SELECT 1")
+        
+        # Check if admin exists
+        admin = db.query(models.User).filter(models.User.role == "admin").first()
+        
+        db.close()
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "admin_exists": admin is not None,
+            "admin_email": admin.email if admin else None
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
 # Mount nested routers
 app.include_router(auth.router)
 app.include_router(users.router)
