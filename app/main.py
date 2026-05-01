@@ -3,10 +3,35 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
 
 from .routers import auth, users, notes, voice
 
 load_dotenv()
+
+# Run migrations and seed on startup
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("🔄 Running database migrations...")
+    import subprocess
+    import sys
+    try:
+        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], check=True, cwd=os.path.dirname(os.path.dirname(__file__)))
+        print("✓ Migrations complete")
+        
+        print("🌱 Seeding database...")
+        subprocess.run([sys.executable, "seed_database.py"], check=True, cwd=os.path.dirname(os.path.dirname(__file__)))
+        print("✓ Database seeded")
+    except subprocess.CalledProcessError as e:
+        print(f"⚠️  Migration/seed error (non-fatal): {e}")
+    except Exception as e:
+        print(f"⚠️  Error during startup: {e}")
+    
+    yield
+    
+    # Shutdown
+    print("🛑 App shutting down...")
 
 app = FastAPI(
     title="VisioLearn Backend",
@@ -14,7 +39,8 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    lifespan=lifespan
 )
 
 # CORS configuration - use environment variable for allowed origins
