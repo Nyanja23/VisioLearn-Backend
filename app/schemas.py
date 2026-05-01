@@ -21,6 +21,15 @@ class SchoolResponse(SchoolCreate):
     class Config:
         from_attributes = True
 
+class SchoolPublicResponse(BaseModel):
+    """Public school listing for registration purposes. Excludes timestamps."""
+    id: UUID
+    name: str
+    region: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
 # --- Token Schemas ---
 class Token(BaseModel):
     access_token: str
@@ -47,6 +56,29 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if len(v) < 12:
+            raise ValueError('Password must be at least 12 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('Password must contain at least one special character')
+        return v
+
+class UserRegister(BaseModel):
+    """Self-registration for teachers and students. Admin accounts cannot be created via this endpoint."""
+    email: EmailStr
+    full_name: str
+    password: str
+    role: Literal["teacher", "student"]  # Only teacher or student allowed
+    school_id: UUID  # Required for self-registration
     
     @field_validator('password')
     @classmethod

@@ -6,9 +6,66 @@ import jwt
 
 from .. import schemas, models, security
 from ..database import get_db
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+@router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
+    """
+    Public registration endpoint for teachers and students.
+    Admin accounts cannot be created via this endpoint.
+    Requires valid school_id.
+    """
+    # Normalize email to lowercase
+    normalized_email = user.email.lower()
+    
+    # Check if email is already registered
+    existing_user = db.query(models.User).filter(models.User.email == normalized_email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Validate school exists and is not deleted
+    school = db.query(models.School).filter(
+        and_(
+            models.School.id == user.school_id,
+            models.School.is_deleted == False
+        )
+    ).first()
+    
+    if not school:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="School not found or has been deactivated"
+        )
+    
+    # Hash password
+    hashed_password = security.get_password_hash(user.password)
+    
+    # Create user (role is already restricted to teacher|student by schema)
+    db_user = models.User(
+        email=normalized_email,
+        full_name=user.full_name,
+        role=user.role,
+        school_id=user.school_id,
+        hashed_password=hashed_password
+    )
+    
+    db.add(db_user)
+    try:
+        db.commit()
+        db.refresh(db_user)
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create account. Please try again."
+        )
+    
+    return db_user
 
 @router.post("/login", response_model=schemas.Token)
 def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):

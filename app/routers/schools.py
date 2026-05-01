@@ -8,6 +8,39 @@ from ..dependencies import require_admin
 
 router = APIRouter(prefix="/api/v1/schools", tags=["schools"])
 
+@router.get("/public", response_model=dict)
+def list_schools_public(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """
+    List active schools for public browsing (registration).
+    No authentication required.
+    Returns school id, name, and region only.
+    """
+    schools = db.query(models.School).filter(
+        models.School.is_deleted == False
+    ).offset(skip).limit(limit).all()
+    
+    total = db.query(models.School).filter(
+        models.School.is_deleted == False
+    ).count()
+    
+    return {
+        "schools": [
+            {
+                "id": school.id,
+                "name": school.name,
+                "region": school.region
+            }
+            for school in schools
+        ],
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
+
 @router.post("/", response_model=schemas.SchoolResponse, status_code=status.HTTP_201_CREATED)
 def create_school(
     school: schemas.SchoolCreate,

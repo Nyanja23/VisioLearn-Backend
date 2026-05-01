@@ -13,22 +13,21 @@ from .security import get_password_hash
 
 load_dotenv()
 
-# Run migrations and seed on startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("🔄 Initializing database...")
+    print("[*] Initializing database...")
     try:
         # Create all tables
         models.Base.metadata.create_all(bind=engine)
-        print("✓ Database tables ready")
+        print("[+] Database tables ready")
         
         # Seed admin user if no users exist
         db = SessionLocal()
         try:
             existing_users = db.query(models.User).first()
             if not existing_users:
-                print("🌱 Creating admin user...")
+                print("[*] Creating admin user...")
                 admin = models.User(
                     email="admin@visiolearn.org",
                     full_name="System Administrator",
@@ -38,21 +37,21 @@ async def lifespan(app: FastAPI):
                 )
                 db.add(admin)
                 db.commit()
-                print("✓ Admin user created")
+                print("[+] Admin user created")
             else:
-                print("✓ Users already exist")
+                print("[+] Users already exist")
         finally:
             db.close()
             
     except Exception as e:
-        print(f"⚠️  Startup error: {e}")
+        print(f"[!] Startup error: {e}")
         import traceback
         traceback.print_exc()
     
     yield
     
     # Shutdown
-    print("🛑 App shutting down...")
+    print("[-] App shutting down...")
 
 app = FastAPI(
     title="VisioLearn Backend",
