@@ -6,6 +6,8 @@ Run this after migrations: python seed_database.py
 
 import os
 import sys
+
+
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 
