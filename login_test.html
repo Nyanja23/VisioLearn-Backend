@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VisioLearn Login Test</title>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 50px auto; }
+        .container { border: 1px solid #ccc; padding: 20px; border-radius: 5px; }
+        input { display: block; width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; width: 100%; }
+        button:hover { background: #0056b3; }
+        .response { margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px; white-space: pre-wrap; font-family: monospace; font-size: 12px; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>VisioLearn Login Test</h1>
+        
+        <h3>Bootstrap Admin Credentials:</h3>
+        <div style="background: #ffffcc; padding: 10px; border-radius: 5px; margin: 10px 0;">
+            <strong>Email:</strong> admin@visiolearn.org<br>
+            <strong>Password:</strong> AdminPass123!@
+        </div>
+
+        <h3>Test Login</h3>
+        <input type="email" id="email" placeholder="Email" value="admin@visiolearn.org">
+        <input type="password" id="password" placeholder="Password" value="AdminPass123!@">
+        <button onclick="testLogin()">Test Login</button>
+
+        <div id="response" style="display:none;" class="response"></div>
+    </div>
+
+    <script>
+        async function testLogin() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const responseDiv = document.getElementById('response');
+            
+            console.log('Attempting login with:');
+            console.log('Email:', email);
+            console.log('Password:', password);
+
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password
+                    })
+                });
+
+                const data = await response.json();
+                
+                responseDiv.style.display = 'block';
+                
+                if (response.ok) {
+                    responseDiv.className = 'response success';
+                    responseDiv.innerHTML = 'SUCCESS! ✓\n\nStatus: ' + response.status + '\n\nAccess Token:\n' + data.access_token + '\n\nRefresh Token:\n' + data.refresh_token;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.innerHTML = 'ERROR! ✗\n\nStatus: ' + response.status + '\n\n' + JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                responseDiv.style.display = 'block';
+                responseDiv.className = 'response error';
+                responseDiv.innerHTML = 'ERROR! ✗\n\nConnection Error:\n' + error.message + '\n\nMake sure the server is running on http://localhost:8000';
+            }
+        }
+
+        // Test connection on page load
+        window.onload = function() {
+            fetch('http://localhost:8000')
+                .then(r => r.json())
+                .then(d => console.log('✓ Server is running:', d))
+                .catch(e => console.error('✗ Server not reachable:', e));
+        };
+    </script>
+</body>
+</html>

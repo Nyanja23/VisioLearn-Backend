@@ -49,9 +49,16 @@ async def lifespan(app: FastAPI):
                 )
                 db.add(admin)
                 db.commit()
-                print("[+] Admin user created")
+                db.refresh(admin)
+                print(f"[+] Admin user created: {admin.email}")
             else:
-                print("[+] Users already exist")
+                user_count = db.query(models.User).count()
+                print(f"[+] Users already exist ({user_count} total)")
+        except Exception as e:
+            print(f"[!] Error creating admin user: {e}")
+            import traceback
+            traceback.print_exc()
+            db.rollback()
         finally:
             db.close()
             
