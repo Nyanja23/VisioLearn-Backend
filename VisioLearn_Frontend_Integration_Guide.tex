@@ -1,0 +1,1274 @@
+%!TEX program = xelatex
+\documentclass[12pt,a4paper,oneside]{article}
+
+% ============================================================================
+% PACKAGES & CONFIGURATION
+% ============================================================================
+\usepackage[utf-8]{inputenc}
+\usepackage[left=2.5cm,right=2.5cm,top=3cm,bottom=3cm]{geometry}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{color}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{fancyvrb}
+\usepackage{longtable}
+
+% Color definitions
+\definecolor{codegreen}{rgb}{0.0, 0.5, 0.0}
+\definecolor{codegray}{rgb}{0.5, 0.5, 0.5}
+\definecolor{codepurple}{rgb}{0.58, 0, 0.82}
+\definecolor{backcolour}{rgb}{0.95, 0.95, 0.95}
+\definecolor{lightblue}{rgb}{0.9, 0.95, 1.0}
+\definecolor{darkblue}{rgb}{0.0, 0.2, 0.6}
+\definecolor{lightyellow}{rgb}{1.0, 0.98, 0.8}
+\definecolor{lightgreen}{rgb}{0.9, 1.0, 0.9}
+\definecolor{lightred}{rgb}{1.0, 0.9, 0.9}
+\definecolor{orange}{rgb}{1.0, 0.65, 0.0}
+
+% Code listing configuration
+\lstset{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codepurple},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codegreen},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    language=json,
+}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textcolor{darkblue}{\textit{VisioLearn Frontend Integration}}}
+\lhead{\textcolor{darkblue}{API Reference}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.5pt}
+
+% Section styling
+\titleformat{\section}{\Large\bfseries\color{darkblue}}{}{0pt}{}[\titlerule]
+\titleformat{\subsection}{\large\bfseries\color{orange}}{}{0pt}{}
+\titleformat{\subsubsection}{\bfseries\color{darkblue}}{}{0pt}{}
+
+% ============================================================================
+% TITLE PAGE
+% ============================================================================
+\title{%
+    \vspace{2cm}
+    \Huge\textbf{\textcolor{darkblue}{VisioLearn Frontend}} \\
+    \vspace{0.5cm}
+    \Large\textit{Backend API Integration Reference} \\
+    \vspace{2cm}
+    \large\textbf{Complete Backend API Documentation for Frontend Developers}
+}
+
+\author{%
+    Backend API Team \\
+    \vspace{0.5cm}
+    Production API at \\
+    \href{https://visiolearn-backend.onrender.com}{https://visiolearn-backend.onrender.com}
+}
+
+\date{\vspace{1cm}\large \textbf{Version 1.0} \\ May 2026}
+
+% ============================================================================
+% DOCUMENT
+% ============================================================================
+\begin{document}
+
+% Title page
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+% ============================================================================
+% TABLE OF CONTENTS
+% ============================================================================
+\tableofcontents
+\newpage
+
+% ============================================================================
+% SECTION 1: OVERVIEW & BASE CONFIGURATION
+% ============================================================================
+\section{Overview \& Configuration}
+
+\subsection{API Base URL}
+
+All requests must be sent to the following base URL:
+
+\begin{tcolorbox}[colback=lightblue, colframe=darkblue, arc=0mm]
+\texttt{https://visiolearn-backend.onrender.com/api/v1}
+\end{tcolorbox}
+
+\subsection{API Version}
+
+This documentation covers \textbf{API v1}. All endpoints are versioned for backward compatibility.
+
+\subsection{Supported HTTP Methods}
+
+\begin{itemize}
+    \item \textbf{GET}: Retrieve data
+    \item \textbf{POST}: Create new data or perform actions
+    \item \textbf{PUT}: Replace existing data
+    \item \textbf{DELETE}: Remove data
+\end{itemize}
+
+\subsection{Content-Type}
+
+All requests and responses use JSON format:
+\begin{lstlisting}
+Content-Type: application/json
+\end{lstlisting}
+
+For file uploads (voice, notes), use \texttt{multipart/form-data}.
+
+\newpage
+
+% ============================================================================
+% SECTION 2: AUTHENTICATION
+% ============================================================================
+\section{Authentication \& Authorization}
+
+\subsection{Overview}
+
+VisioLearn uses JWT (JSON Web Token) authentication. All endpoints except login and signup require an authorization token.
+
+\subsection{Authentication Flow}
+
+\begin{enumerate}
+    \item User provides email and password
+    \item Backend returns \texttt{access\_token} and \texttt{refresh\_token}
+    \item Frontend stores both tokens (preferably in secure storage)
+    \item Frontend includes \texttt{access\_token} in every API request header
+    \item When \texttt{access\_token} expires, use \texttt{refresh\_token} to get a new one
+\end{enumerate}
+
+\subsection{Token Storage Recommendations}
+
+\begin{tcolorbox}[colback=lightgreen, colframe=darkblue]
+\textbf{Security Note:} Store tokens securely:
+\begin{itemize}
+    \item \textbf{Best}: HttpOnly cookies (most secure, set by backend)
+    \item \textbf{Good}: Secure local storage with encryption
+    \item \textbf{Avoid}: Plain localStorage (vulnerable to XSS)
+\end{itemize}
+\end{tcolorbox}
+
+\subsection{Authorization Header}
+
+Include your access token in every authenticated request:
+
+\begin{lstlisting}
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\subsection{User Roles}
+
+The system supports three user roles with different permissions:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Role} & \textbf{Permissions} \\
+\hline
+\textbf{admin} & All endpoints, user management, school management \\
+\hline
+\textbf{teacher} & Upload notes, view student progress, manage lessons \\
+\hline
+\textbf{student} & Access lessons, initiate voice sessions, view progress \\
+\hline
+\end{tabular}
+\caption{User Roles and Permissions}
+\end{table}
+
+\newpage
+
+% ============================================================================
+% SECTION 3: HTTP STATUS CODES
+% ============================================================================
+\section{HTTP Status Codes}
+
+All responses include a status code. Understand what each means:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|c|l|}
+\hline
+\textbf{Code} & \textbf{Meaning} \\
+\hline
+\textbf{200} & OK - Request succeeded \\
+\hline
+\textbf{201} & Created - Resource created successfully \\
+\hline
+\textbf{400} & Bad Request - Invalid input, missing required fields \\
+\hline
+\textbf{401} & Unauthorized - Missing or invalid token \\
+\hline
+\textbf{403} & Forbidden - Insufficient permissions for this resource \\
+\hline
+\textbf{404} & Not Found - Resource doesn't exist \\
+\hline
+\textbf{409} & Conflict - Resource already exists (e.g., duplicate email) \\
+\hline
+\textbf{422} & Unprocessable Entity - Validation error (see detail field) \\
+\hline
+\textbf{500} & Server Error - Internal server error \\
+\hline
+\textbf{503} & Service Unavailable - Server temporarily down \\
+\hline
+\end{tabular}
+\caption{HTTP Status Codes Reference}
+\end{table}
+
+\newpage
+
+% ============================================================================
+% SECTION 4: ERROR RESPONSES
+% ============================================================================
+\section{Error Handling}
+
+All error responses follow a consistent format:
+
+\begin{lstlisting}
+{
+  "detail": "Human-readable error message",
+  "error_code": "ERROR_CODE_ENUM",
+  "timestamp": "2026-05-01T11:30:00Z"
+}
+\end{lstlisting}
+
+\subsection{Common Errors}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{401 Unauthorized}
+\begin{lstlisting}
+{
+  "detail": "Not authenticated",
+  "error_code": "UNAUTHENTICATED"
+}
+\end{lstlisting}
+\textbf{Action}: Include valid Bearer token in Authorization header.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{403 Forbidden}
+\begin{lstlisting}
+{
+  "detail": "Insufficient permissions",
+  "error_code": "INSUFFICIENT_PERMISSIONS"
+}
+\end{lstlisting}
+\textbf{Action}: Verify user role or contact admin.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{400 Bad Request}
+\begin{lstlisting}
+{
+  "detail": "Invalid input provided",
+  "error_code": "VALIDATION_ERROR"
+}
+\end{lstlisting}
+\textbf{Action}: Check request format and required fields.
+\end{tcolorbox}
+
+\newpage
+
+% ============================================================================
+% SECTION 5: AUTHENTICATION ENDPOINTS
+% ============================================================================
+\section{Authentication Endpoints}
+
+\subsection{POST /auth/login}
+
+Login user and receive authentication tokens.
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@visiolearn.org",
+  "password": "SecurePass123!"
+}
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "user": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "user@visiolearn.org",
+    "role": "student"
+  }
+}
+\end{lstlisting}
+
+\subsubsection{Error Responses}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Status} & \textbf{Reason} \\
+\hline
+401 & Invalid email or password \\
+\hline
+400 & Missing email or password field \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{POST /auth/refresh}
+
+Get a new access token using refresh token.
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+POST /api/v1/auth/refresh
+Authorization: Bearer <refresh_token>
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600
+}
+\end{lstlisting}
+
+\textbf{Note}: The old refresh token is invalidated and a new one is returned. Store the new refresh token immediately.
+
+\subsection{POST /auth/logout}
+
+Logout user and invalidate tokens.
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+POST /api/v1/auth/logout
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "message": "Successfully logged out"
+}
+\end{lstlisting}
+
+\newpage
+
+% ============================================================================
+% SECTION 6: USER ENDPOINTS
+% ============================================================================
+\section{User Management Endpoints}
+
+All user endpoints require authentication.
+
+\subsection{GET /users/me}
+
+Get current logged-in user's profile.
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+GET /api/v1/users/me
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "student@visiolearn.org",
+  "role": "student",
+  "school_id": "f5c8f3b1-2a4c-4d6e-8f0a-1b3c5d7e9f1a",
+  "created_at": "2026-05-01T10:00:00Z"
+}
+\end{lstlisting}
+
+\subsection{GET /users}
+
+Get list of all users (admin only).
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+GET /api/v1/users
+Authorization: Bearer <admin_access_token>
+\end{lstlisting}
+
+\subsubsection{Query Parameters}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Type} & \textbf{Description} \\
+\hline
+\texttt{skip} & integer & Pagination offset (default: 0) \\
+\hline
+\texttt{limit} & integer & Records per page (default: 10, max: 100) \\
+\hline
+\texttt{role} & string & Filter by role (admin, teacher, student) \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "users": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "email": "student@visiolearn.org",
+      "role": "student",
+      "school_id": "f5c8f3b1-2a4c-4d6e-8f0a-1b3c5d7e9f1a",
+      "created_at": "2026-05-01T10:00:00Z"
+    }
+  ],
+  "total": 150,
+  "skip": 0,
+  "limit": 10
+}
+\end{lstlisting}
+
+\newpage
+
+% ============================================================================
+% SECTION 7: NOTES ENDPOINTS
+% ============================================================================
+\section{Lesson Notes Endpoints}
+
+Upload and manage lesson materials (PDF, DOCX, TXT).
+
+\subsection{POST /notes}
+
+Upload a new lesson note.
+
+\subsubsection{Requirements}
+
+\begin{itemize}
+    \item \textbf{Authentication}: Required
+    \item \textbf{Role}: teacher or admin only
+    \item \textbf{File Size}: Max 50 MB
+    \item \textbf{File Types}: PDF, DOCX, TXT only
+    \item \textbf{Content-Type}: multipart/form-data
+\end{itemize}
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+POST /api/v1/notes
+Authorization: Bearer <teacher_access_token>
+Content-Type: multipart/form-data
+
+form-data:
+  - title: "Chapter 1: Introduction"
+  - description: "Introduction to Python basics"
+  - file: <binary_file>
+  - unit_id: "308685dc-7b35-4494-b62b-f9ee2de4b884"
+  - subject: "Python"
+\end{lstlisting}
+
+\subsubsection{Form Parameters}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Field} & \textbf{Type} & \textbf{Required} & \textbf{Description} \\
+\hline
+\texttt{title} & string & Yes & Note title (max 255 chars) \\
+\hline
+\texttt{description} & string & No & Detailed description \\
+\hline
+\texttt{file} & binary & Yes & PDF/DOCX/TXT file \\
+\hline
+\texttt{unit\_id} & UUID & Yes & Associated unit ID \\
+\hline
+\texttt{subject} & string & No & Subject area \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Response (201 Created)}
+
+\begin{lstlisting}
+{
+  "id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+  "title": "Chapter 1: Introduction",
+  "description": "Introduction to Python basics",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884",
+  "file_url": "https://storage.visiolearn.com/notes/a1b2c3d4.pdf",
+  "uploaded_by": "550e8400-e29b-41d4-a716-446655440000",
+  "created_at": "2026-05-01T11:30:00Z",
+  "status": "processing"
+}
+\end{lstlisting}
+
+\subsubsection{Error Responses}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{400 - File too large or wrong format}
+\begin{lstlisting}
+{
+  "detail": "File must be PDF, DOCX, or TXT and under 50 MB"
+}
+\end{lstlisting}
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{403 - Insufficient permissions}
+\begin{lstlisting}
+{
+  "detail": "Only teachers can upload notes"
+}
+\end{lstlisting}
+\end{tcolorbox}
+
+\subsection{GET /notes}
+
+Get list of lesson notes (admin/teacher) or assigned notes (student).
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+GET /api/v1/notes?skip=0&limit=10&status=completed
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\subsubsection{Query Parameters}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Type} & \textbf{Description} \\
+\hline
+\texttt{skip} & integer & Pagination offset \\
+\hline
+\texttt{limit} & integer & Records per page (max: 100) \\
+\hline
+\texttt{status} & string & Filter: processing, completed, failed \\
+\hline
+\texttt{unit\_id} & UUID & Filter by unit \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "notes": [
+    {
+      "id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+      "title": "Chapter 1: Introduction",
+      "description": "Introduction to Python basics",
+      "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884",
+      "file_url": "https://storage.visiolearn.com/notes/a1b2c3d4.pdf",
+      "status": "completed",
+      "created_at": "2026-05-01T11:30:00Z"
+    }
+  ],
+  "total": 45,
+  "skip": 0,
+  "limit": 10
+}
+\end{lstlisting}
+
+\subsection{GET /notes/\{note\_id\}}
+
+Get details of a specific note.
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+GET /api/v1/notes/a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+  "title": "Chapter 1: Introduction",
+  "description": "Introduction to Python basics",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884",
+  "file_url": "https://storage.visiolearn.com/notes/a1b2c3d4.pdf",
+  "uploaded_by": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "completed",
+  "created_at": "2026-05-01T11:30:00Z",
+  "updated_at": "2026-05-01T12:00:00Z"
+}
+\end{lstlisting}
+
+\newpage
+
+% ============================================================================
+% SECTION 8: VOICE SESSION ENDPOINTS
+% ============================================================================
+\section{Voice Session Endpoints}
+
+Manage voice-based learning sessions where students interact with AI.
+
+\subsection{Understanding Voice Session Lifecycle}
+
+Voice sessions follow a strict lifecycle:
+
+\begin{enumerate}
+    \item \textbf{ACTIVE}: Session started, student can send voice/text input
+    \item \textbf{PAUSED}: Student paused the session temporarily
+    \item \textbf{COMPLETED}: Session ended, results are finalized
+\end{enumerate}
+
+Once a session is \textbf{COMPLETED}, it cannot be modified.
+
+\subsection{POST /voice/sessions}
+
+Start a new voice learning session.
+
+\subsubsection{Requirements}
+
+\begin{itemize}
+    \item \textbf{Authentication}: Required
+    \item \textbf{Role}: student only
+    \item \textbf{note\_id}: Must be a valid note that the student has access to
+\end{itemize}
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+POST /api/v1/voice/sessions
+Authorization: Bearer <student_access_token>
+Content-Type: application/json
+
+{
+  "student_id": "550e8400-e29b-41d4-a716-446655440000",
+  "note_id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884"
+}
+\end{lstlisting}
+
+\subsubsection{Request Fields}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\hline
+\texttt{student\_id} & UUID & Your user ID \\
+\hline
+\texttt{note\_id} & UUID & ID of lesson note to study \\
+\hline
+\texttt{unit\_id} & UUID & ID of course unit \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Response (201 Created)}
+
+\begin{lstlisting}
+{
+  "id": "sess_1a2b3c4d5e6f7g8h",
+  "student_id": "550e8400-e29b-41d4-a716-446655440000",
+  "note_id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884",
+  "status": "ACTIVE",
+  "started_at": "2026-05-01T11:30:00Z",
+  "duration_seconds": 0,
+  "interactions_count": 0
+}
+\end{lstlisting}
+
+\subsubsection{Error Responses}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{403 - Unauthorized Student}
+\begin{lstlisting}
+{
+  "detail": "Unauthorized: student_id must match current user"
+}
+\end{lstlisting}
+\end{tcolorbox}
+
+\subsection{POST /voice/sessions/\{session\_id\}/interactions}
+
+Add interaction (question/answer) to an active session.
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+POST /api/v1/voice/sessions/sess_1a2b3c4d5e6f7g8h/interactions
+Authorization: Bearer <student_access_token>
+Content-Type: application/json
+
+{
+  "input_type": "voice",
+  "input_text": "What is Python?",
+  "ai_response": "Python is a programming language..."
+}
+\end{lstlisting}
+
+\subsubsection{Request Fields}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Field} & \textbf{Type} & \textbf{Description} \\
+\hline
+\texttt{input\_type} & string & voice or text \\
+\hline
+\texttt{input\_text} & string & Student's question \\
+\hline
+\texttt{ai\_response} & string & AI's response \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Response (201 Created)}
+
+\begin{lstlisting}
+{
+  "id": "int_1a2b3c4d5e6f7g8h",
+  "session_id": "sess_1a2b3c4d5e6f7g8h",
+  "sequence_number": 1,
+  "input_type": "voice",
+  "input_text": "What is Python?",
+  "ai_response": "Python is a programming language...",
+  "created_at": "2026-05-01T11:30:15Z"
+}
+\end{lstlisting}
+
+\subsection{PUT /voice/sessions/\{session\_id\}}
+
+Update session status (pause, resume, complete).
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+PUT /api/v1/voice/sessions/sess_1a2b3c4d5e6f7g8h
+Authorization: Bearer <student_access_token>
+Content-Type: application/json
+
+{
+  "status": "COMPLETED"
+}
+\end{lstlisting}
+
+\subsubsection{Valid Status Transitions}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Current Status} & \textbf{Valid Next Status} \\
+\hline
+ACTIVE & PAUSED, COMPLETED \\
+\hline
+PAUSED & ACTIVE, COMPLETED \\
+\hline
+COMPLETED & (no transitions allowed) \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "id": "sess_1a2b3c4d5e6f7g8h",
+  "student_id": "550e8400-e29b-41d4-a716-446655440000",
+  "note_id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884",
+  "status": "COMPLETED",
+  "started_at": "2026-05-01T11:30:00Z",
+  "ended_at": "2026-05-01T11:45:30Z",
+  "duration_seconds": 930,
+  "interactions_count": 5
+}
+\end{lstlisting}
+
+\subsection{GET /voice/sessions}
+
+Get list of user's voice sessions.
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+GET /api/v1/voice/sessions?status=COMPLETED&skip=0&limit=10
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\subsubsection{Query Parameters}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Type} & \textbf{Description} \\
+\hline
+\texttt{status} & string & Filter: ACTIVE, PAUSED, COMPLETED \\
+\hline
+\texttt{skip} & integer & Pagination offset \\
+\hline
+\texttt{limit} & integer & Records per page (max: 100) \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "sessions": [
+    {
+      "id": "sess_1a2b3c4d5e6f7g8h",
+      "student_id": "550e8400-e29b-41d4-a716-446655440000",
+      "note_id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+      "status": "COMPLETED",
+      "started_at": "2026-05-01T11:30:00Z",
+      "ended_at": "2026-05-01T11:45:30Z",
+      "duration_seconds": 930,
+      "interactions_count": 5
+    }
+  ],
+  "total": 12,
+  "skip": 0,
+  "limit": 10
+}
+\end{lstlisting}
+
+\subsection{GET /voice/sessions/\{session\_id\}}
+
+Get details of a specific voice session.
+
+\subsubsection{Request}
+
+\begin{lstlisting}
+GET /api/v1/voice/sessions/sess_1a2b3c4d5e6f7g8h
+Authorization: Bearer <access_token>
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}
+{
+  "id": "sess_1a2b3c4d5e6f7g8h",
+  "student_id": "550e8400-e29b-41d4-a716-446655440000",
+  "note_id": "a1b2c3d4-e5f6-47g8-h9i0-j1k2l3m4n5o6",
+  "unit_id": "308685dc-7b35-4494-b62b-f9ee2de4b884",
+  "status": "COMPLETED",
+  "started_at": "2026-05-01T11:30:00Z",
+  "ended_at": "2026-05-01T11:45:30Z",
+  "duration_seconds": 930,
+  "interactions_count": 5,
+  "interactions": [
+    {
+      "id": "int_1a2b3c4d5e6f7g8h",
+      "sequence_number": 1,
+      "input_type": "voice",
+      "input_text": "What is Python?",
+      "ai_response": "Python is a programming language...",
+      "created_at": "2026-05-01T11:30:15Z"
+    }
+  ]
+}
+\end{lstlisting}
+
+\newpage
+
+% ============================================================================
+% SECTION 9: COMMON PATTERNS & BEST PRACTICES
+% ============================================================================
+\section{Common Integration Patterns}
+
+\subsection{Token Refresh Flow}
+
+When you receive a 401 response:
+
+\begin{enumerate}
+    \item Use your \texttt{refresh\_token} to call \texttt{POST /auth/refresh}
+    \item Store the new \texttt{access\_token}
+    \item Retry the original failed request with the new token
+\end{enumerate}
+
+\textbf{Important}: The refresh token itself is also rotated, so always store the new one returned.
+
+\subsection{Pagination}
+
+All list endpoints support pagination:
+
+\begin{lstlisting}
+GET /api/v1/notes?skip=20&limit=10
+\end{lstlisting}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Parameter} & \textbf{Meaning} \\
+\hline
+\texttt{skip} & Number of records to skip (offset) \\
+\hline
+\texttt{limit} & Number of records to return \\
+\hline
+\texttt{total} & Total available records \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Handling File Uploads}
+
+For file uploads (lesson notes):
+
+\begin{enumerate}
+    \item Use \texttt{Content-Type: multipart/form-data}
+    \item \textbf{Do NOT} set Content-Type header manually—let your HTTP client set it automatically with boundary
+    \item Include all required form fields (title, file, unit\_id)
+    \item Max file size: 50 MB
+    \item Supported formats: PDF, DOCX, TXT
+\end{enumerate}
+
+\subsection{Voice Session Flow}
+
+Typical student workflow:
+
+\begin{enumerate}
+    \item \textbf{Start}: \texttt{POST /voice/sessions} with note\_id
+    \item \textbf{Interact}: \texttt{POST /voice/sessions/\{id\}/interactions} repeatedly
+    \item \textbf{Pause}: \texttt{PUT /voice/sessions/\{id\}} with \texttt{status: PAUSED}
+    \item \textbf{Resume}: \texttt{PUT /voice/sessions/\{id\}} with \texttt{status: ACTIVE}
+    \item \textbf{End}: \texttt{PUT /voice/sessions/\{id\}} with \texttt{status: COMPLETED}
+\end{enumerate}
+
+Once COMPLETED, the session becomes read-only.
+
+\newpage
+
+% ============================================================================
+% SECTION 10: QUICK REFERENCE
+% ============================================================================
+\section{Quick API Reference}
+
+\begin{table}[H]
+\centering
+\small
+\begin{longtable}{|l|l|l|l|}
+\hline
+\textbf{Method} & \textbf{Endpoint} & \textbf{Auth} & \textbf{Purpose} \\
+\hline
+\endhead
+
+POST & /auth/login & No & Login user \\
+\hline
+POST & /auth/refresh & Refresh Token & Get new access token \\
+\hline
+POST & /auth/logout & Yes & Logout user \\
+\hline
+GET & /users/me & Yes & Get current user \\
+\hline
+GET & /users & Admin & List all users \\
+\hline
+POST & /notes & Teacher & Upload lesson note \\
+\hline
+GET & /notes & Yes & List notes \\
+\hline
+GET & /notes/\{id\} & Yes & Get note details \\
+\hline
+POST & /voice/sessions & Student & Start voice session \\
+\hline
+GET & /voice/sessions & Yes & List voice sessions \\
+\hline
+GET & /voice/sessions/\{id\} & Yes & Get session details \\
+\hline
+POST & /voice/sessions/\{id\}/interactions & Student & Add interaction \\
+\hline
+PUT & /voice/sessions/\{id\} & Student & Update session status \\
+\hline
+
+\caption{Complete Endpoint Reference}
+\end{longtable}
+\end{table}
+
+\newpage
+
+% ============================================================================
+% SECTION 11: DATA FORMATS & VALIDATION
+% ============================================================================
+\section{Data Formats \& Validation}
+
+\subsection{Email Format}
+
+All email fields must be valid RFC 5322 format:
+
+\begin{lstlisting}
+Valid: user@visiolearn.org, teacher.name@example.com
+Invalid: user@, user@.com, user@example
+\end{lstlisting}
+
+\subsection{Password Requirements}
+
+Passwords must meet these requirements:
+
+\begin{itemize}
+    \item Minimum 8 characters
+    \item At least one uppercase letter (A-Z)
+    \item At least one lowercase letter (a-z)
+    \item At least one number (0-9)
+    \item At least one special character (!@\#\$\%\^\&*)
+\end{itemize}
+
+Example: \texttt{SecurePass123!}
+
+\subsection{UUID Format}
+
+All IDs use UUID v4 format:
+
+\begin{lstlisting}
+550e8400-e29b-41d4-a716-446655440000
+\end{lstlisting}
+
+\subsection{Timestamp Format}
+
+All timestamps are in ISO 8601 format (UTC):
+
+\begin{lstlisting}
+2026-05-01T11:30:00Z
+\end{lstlisting}
+
+\subsection{File Upload Constraints}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Constraint} & \textbf{Value} \\
+\hline
+Max file size & 50 MB \\
+\hline
+Allowed formats & PDF, DOCX, TXT \\
+\hline
+Encoding type & multipart/form-data \\
+\hline
+\end{tabular}
+\end{table}
+
+\newpage
+
+% ============================================================================
+% SECTION 12: TROUBLESHOOTING
+% ============================================================================
+\section{Troubleshooting Guide}
+
+\subsection{401 Unauthorized}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{Problem}: Request returns 401 Unauthorized
+
+\textbf{Causes}:
+\begin{itemize}
+    \item Missing Authorization header
+    \item Invalid or expired access token
+    \item Malformed Bearer token format
+\end{itemize}
+
+\textbf{Solution}:
+\begin{itemize}
+    \item Verify Authorization header is present: \texttt{Authorization: Bearer <token>}
+    \item Check token hasn't expired (expires\_in: 3600 seconds)
+    \item Use \texttt{POST /auth/refresh} to get a new token
+    \item Re-login if refresh fails
+\end{itemize}
+\end{tcolorbox}
+
+\subsection{403 Forbidden}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{Problem}: Request returns 403 Forbidden
+
+\textbf{Causes}:
+\begin{itemize}
+    \item User role doesn't have permission for endpoint
+    \item Student trying to upload notes (teacher only)
+    \item Teacher accessing admin-only endpoints
+\end{itemize}
+
+\textbf{Solution}:
+\begin{itemize}
+    \item Check endpoint role requirements
+    \item Use correct user account (teacher can't upload as student)
+    \item Contact admin if you need elevated permissions
+\end{itemize}
+\end{tcolorbox}
+
+\subsection{400 Bad Request}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{Problem}: Request returns 400 Bad Request
+
+\textbf{Causes}:
+\begin{itemize}
+    \item Missing required field
+    \item Invalid data format
+    \item Invalid UUID or email format
+\end{itemize}
+
+\textbf{Solution}:
+\begin{itemize}
+    \item Check all required fields are provided
+    \item Validate email and UUID formats before sending
+    \item Verify JSON syntax is correct
+    \item Check Content-Type header matches request body
+\end{itemize}
+\end{tcolorbox}
+
+\subsection{422 Unprocessable Entity}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{Problem}: Request returns 422 Unprocessable Entity
+
+\textbf{Causes}:
+\begin{itemize}
+    \item Validation error on field values
+    \item Field constraints not met (e.g., password too weak)
+    \item Type mismatch (string vs number)
+\end{itemize}
+
+\textbf{Solution}:
+\begin{itemize}
+    \item Check the \texttt{detail} field for specific validation error
+    \item Verify password meets complexity requirements
+    \item Ensure data types match API schema
+    \item Re-read data format section above
+\end{itemize}
+\end{tcolorbox}
+
+\subsection{500 Server Error}
+
+\begin{tcolorbox}[colback=lightred, colframe=darkblue]
+\textbf{Problem}: Request returns 500 Server Error
+
+\textbf{Causes}:
+\begin{itemize}
+    \item Server-side issue or bug
+    \item Database connection problem
+    \item Service temporarily unavailable
+\end{itemize}
+
+\textbf{Solution}:
+\begin{itemize}
+    \item Retry the request after a few seconds
+    \item Check status page: https://visiolearn-backend.onrender.com/health
+    \item Contact backend team if error persists
+\end{itemize}
+\end{tcolorbox}
+
+\newpage
+
+% ============================================================================
+% SECTION 13: USEFUL LINKS
+% ============================================================================
+\section{Resources}
+
+\subsection{Live API Documentation}
+
+\begin{itemize}
+    \item \textbf{Swagger UI}: \url{https://visiolearn-backend.onrender.com/docs}
+    \item \textbf{ReDoc}: \url{https://visiolearn-backend.onrender.com/redoc}
+    \item \textbf{OpenAPI JSON}: \url{https://visiolearn-backend.onrender.com/openapi.json}
+\end{itemize}
+
+\subsection{Testing}
+
+Use these tools to test API endpoints:
+
+\begin{itemize}
+    \item \textbf{Postman}: \url{https://www.postman.com} (GUI-based)
+    \item \textbf{cURL}: Command-line tool (pre-installed on most systems)
+    \item \textbf{Insomnia}: \url{https://insomnia.rest} (open-source alternative)
+\end{itemize}
+
+\subsection{HTTP Clients in Popular Languages}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Language} & \textbf{HTTP Client} \\
+\hline
+JavaScript & Axios, Fetch API, node-fetch \\
+\hline
+Python & requests, httpx \\
+\hline
+Java & OkHttp, HttpClient \\
+\hline
+Go & net/http, resty \\
+\hline
+C\# & HttpClient, RestSharp \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Support}
+
+\begin{itemize}
+    \item \textbf{GitHub Issues}: \url{https://github.com/Nyanja23/VisioLearn-Backend/issues}
+    \item \textbf{Swagger UI}: Try endpoints live at \url{https://visiolearn-backend.onrender.com/docs}
+\end{itemize}
+
+\end{document}
