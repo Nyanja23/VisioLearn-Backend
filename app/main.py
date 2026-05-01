@@ -4,8 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
+from sqlalchemy.orm import Session
 
 from .routers import auth, users, notes, voice
+from .database import SessionLocal, engine
+from . import models
+from .security import get_password_hash
 
 load_dotenv()
 
@@ -13,20 +17,37 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("🔄 Running database migrations...")
-    import subprocess
-    import sys
+    print("🔄 Initializing database...")
     try:
-        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], check=True, cwd=os.path.dirname(os.path.dirname(__file__)))
-        print("✓ Migrations complete")
+        # Create all tables
+        models.Base.metadata.create_all(bind=engine)
+        print("✓ Database tables ready")
         
-        print("🌱 Seeding database...")
-        subprocess.run([sys.executable, "seed_database.py"], check=True, cwd=os.path.dirname(os.path.dirname(__file__)))
-        print("✓ Database seeded")
-    except subprocess.CalledProcessError as e:
-        print(f"⚠️  Migration/seed error (non-fatal): {e}")
+        # Seed admin user if no users exist
+        db = SessionLocal()
+        try:
+            existing_users = db.query(models.User).first()
+            if not existing_users:
+                print("🌱 Creating admin user...")
+                admin = models.User(
+                    email="admin@visiolearn.org",
+                    full_name="System Administrator",
+                    role="admin",
+                    hashed_password=get_password_hash("AdminPass123!@"),
+                    school_id=None
+                )
+                db.add(admin)
+                db.commit()
+                print("✓ Admin user created")
+            else:
+                print("✓ Users already exist")
+        finally:
+            db.close()
+            
     except Exception as e:
-        print(f"⚠️  Error during startup: {e}")
+        print(f"⚠️  Startup error: {e}")
+        import traceback
+        traceback.print_exc()
     
     yield
     
