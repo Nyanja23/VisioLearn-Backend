@@ -1,0 +1,262 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{booktabs}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    backgroundColor=\color{gray!10},
+}
+
+\title{VisioLearn Backend: System Architecture for Frontend}
+\author{Backend Team}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{1. System Overview}
+
+VisioLearn is an offline-first audio learning platform for visually impaired students in Uganda. The backend implements a \textbf{class-based multi-subject architecture} where:
+
+\begin{itemize}
+    \item \textbf{Classes} are managed by a single \textit{class teacher} who generates two shareable codes
+    \item \textbf{Subject teachers} join classes using the teacher code and can teach \textbf{multiple subjects}
+    \item \textbf{Students} join classes using the student code and access content from all subject teachers
+    \item \textbf{Progress} is tracked per student, per subject, per class
+\end{itemize}
+
+The API provides 44 routes across 8 resource categories. All endpoints are JWT-authenticated and support role-based access control (RBAC).
+
+\section*{2. User Roles \& Registration}
+
+\subsection*{Four User Roles}
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{|l|p{3.5cm}|}
+\hline
+\textbf{Role} & \textbf{Capabilities} \\
+\hline
+\texttt{admin} & Full system access, debugging, user management \\
+\hline
+\texttt{class\_teacher} & Creates class, generates codes, views all progress \\
+\hline
+\texttt{subject\_teacher} & Uploads content for subjects, sees subject progress \\
+\hline
+\texttt{student} & Joins class, accesses content, logs progress \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection*{Three Registration Endpoints}
+
+\begin{lstlisting}[language=bash]
+POST /api/v1/auth/register/class-teacher
+Body: {email, full_name, password, class_name}
+Returns: user_id, class_id, student_code (SC-XXXX),
+         teacher_code (TC-XXXX)
+
+POST /api/v1/auth/register/subject-teacher
+Body: {email, full_name, password, 
+       teacher_code?, subject_name?}
+Returns: user_id, subject_id, class_id (if joined)
+
+POST /api/v1/auth/register/student
+Body: {email, full_name, password, student_code}
+Returns: user_id, class_id, class_name
+\end{lstlisting}
+
+\textbf{Key Point:} Subject teachers can teach multiple subjects in the same or different classes. There is \textbf{no single-subject restriction}.
+
+\section*{3. API Endpoints}
+
+\subsection*{Authentication (7 routes)}
+\begin{itemize}
+    \item \texttt{POST /login} — Returns \texttt{access\_token}, \texttt{refresh\_token}
+    \item \texttt{POST /refresh} — Renew expired tokens
+    \item Registration endpoints (see above)
+\end{itemize}
+
+All endpoints use Bearer token: \texttt{Authorization: Bearer <token>}
+
+\subsection*{Content Management (6 routes)}
+\begin{lstlisting}[language=bash]
+POST /api/v1/notes/upload
+Body: {title, subject_id, grade_level, 
+       description?, duration_seconds?}
+Returns: LessonNote with id, class_id, subject_id
+
+GET /api/v1/notes/list
+Returns: Array of accessible notes
+         (filtered by role & class membership)
+
+GET /api/v1/notes/{id}
+Returns: Single note (with access checks)
+\end{lstlisting}
+
+\textbf{Content Scoping:} Each note is linked to \textbf{(class\_id, subject\_id, teacher\_id)}. Students see only notes from subjects in their enrolled classes.
+
+\subsection*{Progress Tracking (6 routes)}
+\begin{lstlisting}[language=bash]
+POST /api/v1/progress
+Body: {content_id, last_position_seconds, completed}
+Stores: class_id, subject_id, teacher_id 
+        (auto-extracted from note)
+
+GET /api/v1/progress/me
+Returns: Student's overall progress
+
+GET /api/v1/progress/me/by-subject
+Returns: {subject_id → [progress items]}
+
+GET /api/v1/progress/by-subject/{subject_id}
+Returns: All students' progress for that subject
+         (subject_teacher only)
+\end{lstlisting}
+
+\subsection*{Class Management (5 routes)}
+\begin{lstlisting}[language=bash]
+GET /api/v1/classes/{id}
+Returns: {class_name, class_teacher_id, 
+          student_code, teacher_code}
+
+GET /api/v1/classes/{id}/students
+Returns: [{id, email, full_name, joined_at}]
+         (class_teacher only)
+
+GET /api/v1/classes/{id}/matrix
+Returns: {
+  students: [{id, full_name}],
+  subjects: [{id, name}],
+  completion: [[0-100%, ...], ...]
+}
+\end{lstlisting}
+
+\section*{4. Data Model}
+
+\textbf{Core Entities:}
+\begin{itemize}
+    \item \textbf{User} — email, role, hashed\_password
+    \item \textbf{Class} — class\_name, class\_teacher\_id, student\_code, teacher\_code
+    \item \textbf{ClassSubject} — class\_id, subject\_name, subject\_teacher\_id
+    \item \textbf{ClassMembership} — class\_id, student\_id, joined\_at, left\_at (soft delete)
+    \item \textbf{LessonNote} — title, description, duration\_seconds, class\_id, subject\_id, teacher\_id, status
+    \item \textbf{ContentProgress} — student\_id, content\_id, class\_id, subject\_id, teacher\_id, last\_position\_seconds, completed, completion\_percentage
+\end{itemize}
+
+\section*{5. Key Design Decisions}
+
+\subsection*{Auto-Generated Codes}
+Class teachers receive two shareable codes:
+\begin{itemize}
+    \item \textbf{Student Code:} \texttt{SC-XXXX} format (261K combinations)
+    \item \textbf{Teacher Code:} \texttt{TC-XXXX} format (261K combinations)
+\end{itemize}
+Subject teachers and students join by entering these codes (no admin overhead).
+
+\subsection*{Multi-Subject Teaching}
+One subject teacher can teach:
+\begin{itemize}
+    \item Multiple subjects in the same class
+    \item The same subject across different classes
+    \item A subject mix: Math, Science, English in Class 9A; Biology in Class 10B
+\end{itemize}
+This is enabled by having \textbf{no unique constraint} on \texttt{(class\_id, subject\_teacher\_id)}.
+
+\subsection*{Content Scoping}
+Every lesson note belongs to exactly one (class, subject, teacher) triple. When a student accesses content, the backend verifies:
+\begin{enumerate}
+    \item Student is a member of the class
+    \item The class has the subject
+    \item The subject is taught by the requesting user
+\end{enumerate}
+
+\subsection*{Progress Tracking}
+Progress is logged with full context: \texttt{(student\_id, content\_id, class\_id, subject\_id, teacher\_id)}. This enables:
+\begin{itemize}
+    \item Class teachers to see a matrix: students vs. subjects
+    \item Subject teachers to see only their subject's progress
+    \item Students to see their own progress per subject
+\end{itemize}
+
+\section*{6. Frontend Integration Guide}
+
+\subsection*{Authentication Flow}
+\begin{enumerate}
+    \item User selects role: class teacher, subject teacher, or student
+    \item Call appropriate registration endpoint
+    \item Store returned \texttt{access\_token}, \texttt{refresh\_token} in secure storage
+    \item Include token in all subsequent requests: \texttt{Authorization: Bearer <token>}
+\end{enumerate}
+
+\subsection*{Class Teacher Flow}
+\begin{enumerate}
+    \item Register class → get student\_code and teacher\_code
+    \item Display codes for students/subject teachers to join
+    \item Periodically fetch \texttt{GET /classes/{id}/students} to list enrolled students
+    \item Fetch \texttt{GET /classes/{id}/matrix} to show progress dashboard
+\end{enumerate}
+
+\subsection*{Subject Teacher Flow}
+\begin{enumerate}
+    \item Register using teacher\_code from class teacher
+    \item Upload content via \texttt{POST /notes/upload} with subject\_id
+    \item View subject progress via \texttt{GET /progress/by-subject/{subject\_id}}
+\end{enumerate}
+
+\subsection*{Student Flow}
+\begin{enumerate}
+    \item Register using student\_code from class teacher
+    \item Fetch \texttt{GET /notes/list} to get available content
+    \item Play audio, periodically call \texttt{POST /progress} to log position
+    \item View \texttt{GET /progress/me/by-subject} for progress summary
+\end{enumerate}
+
+\section*{7. Password Requirements}
+
+All password fields require:
+\begin{itemize}
+    \item Minimum 12 characters
+    \item At least one uppercase letter
+    \item At least one lowercase letter
+    \item At least one digit
+    \item At least one special character: \texttt{!@\#\$\%\&*()?:..}
+\end{itemize}
+
+\section*{8. Error Handling}
+
+All errors follow REST conventions:
+\begin{itemize}
+    \item \textbf{400} — Invalid request (validation failed, malformed UUID, etc.)
+    \item \textbf{401} — Unauthorized (missing or invalid token)
+    \item \textbf{403} — Forbidden (role/permission check failed)
+    \item \textbf{404} — Resource not found (class, subject, note doesn't exist)
+    \item \textbf{422} — Unprocessable entity (schema validation failed)
+    \item \textbf{500} — Server error (database failure, etc.)
+\end{itemize}
+
+Response format:
+\begin{lstlisting}[language=json]
+{"detail": "Error message or array of validation errors"}
+\end{lstlisting}
+
+\section*{9. Base URL \& Environment}
+
+\textbf{Current Deployment:} \url{https://visiolearn-backend.onrender.com}
+
+All endpoints use: \texttt{https://visiolearn-backend.onrender.com/api/v1/<endpoint>}
+
+For local development: \texttt{http://127.0.0.1:8000/api/v1/<endpoint>}
+
+\section*{Questions?}
+
+Contact the backend team. All endpoints are live and tested. The API documentation is also available via Swagger at \texttt{/docs}.
+
+\end{document}
