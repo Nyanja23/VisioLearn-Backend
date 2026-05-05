@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from .routers import auth, users, notes, voice, schools, internal
+from .routers import auth, users, notes, voice, schools, internal, progress
 from .database import SessionLocal, engine
 from . import models
 from .security import get_password_hash
@@ -153,6 +153,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(schools.router)
 app.include_router(notes.router)
+app.include_router(progress.router)
 app.include_router(voice.router)
 app.include_router(internal.router)
 

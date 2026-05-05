@@ -52,3 +52,4 @@ class RoleChecker:
 # Convenience dependencies for specific roles
 require_admin = RoleChecker(["admin"])
 require_teacher = RoleChecker(["admin", "teacher"])
+require_student = RoleChecker(["student"])
