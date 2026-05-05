@@ -47,8 +47,16 @@ async def lifespan(app: FastAPI):
             models.ContentProgress.__table__,
         ]
         
+        # Disable foreign key constraints during table drop
+        with engine.begin() as conn:
+            conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
+            
         for table in tables_to_drop:
             table.drop(bind=engine, checkfirst=True)
+        
+        # Re-enable foreign key constraints
+        with engine.begin() as conn:
+            conn.exec_driver_sql("PRAGMA foreign_keys = ON")
         
         for table in tables_to_drop:
             table.create(bind=engine)

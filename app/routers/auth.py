@@ -11,7 +11,7 @@ from ..utils import generate_student_code, generate_teacher_code
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
-@router.post("/register/class-teacher", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register/class-teacher", response_model=schemas.ClassTeacherRegistrationResponse, status_code=status.HTTP_201_CREATED)
 def register_class_teacher(user: schemas.UserRegisterClassTeacher, db: Session = Depends(get_db)):
     """
     Class teacher registration endpoint.
@@ -24,8 +24,10 @@ def register_class_teacher(user: schemas.UserRegisterClassTeacher, db: Session =
     - class_name: Name of the class (e.g., "Year 9 Science")
     
     Response:
-    - User object with role=class_teacher
-    - Also returns: class_id, student_code, teacher_code (via headers or extended response)
+    - user_id, email, full_name, role
+    - class_id: UUID of the created class
+    - student_code: Unique code for students to join (e.g., SC-XXXX)
+    - teacher_code: Unique code for subject teachers to join (e.g., TC-XXXX)
     """
     # Normalize email to lowercase
     normalized_email = user.email.lower()
@@ -92,9 +94,25 @@ def register_class_teacher(user: schemas.UserRegisterClassTeacher, db: Session =
         db.add(db_class)
         db.commit()
         db.refresh(db_teacher)
+        db.refresh(db_class)
         
         print(f"[+] Class teacher registered: {db_teacher.email}, Class: {user.class_name}, Student Code: {student_code}, Teacher Code: {teacher_code}")
         
+        # Build response with class information
+        return {
+            "user_id": db_teacher.id,
+            "email": db_teacher.email,
+            "full_name": db_teacher.full_name,
+            "role": db_teacher.role,
+            "class_id": db_class.id,
+            "student_code": db_class.student_code,
+            "teacher_code": db_class.teacher_code,
+            "created_at": db_teacher.created_at
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         print(f"[!] Error creating class teacher: {e}")
@@ -102,11 +120,9 @@ def register_class_teacher(user: schemas.UserRegisterClassTeacher, db: Session =
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create class teacher account. Please try again."
         )
-    
-    return db_teacher
 
 
-@router.post("/register/subject-teacher", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register/subject-teacher", response_model=schemas.SubjectTeacherRegistrationResponse, status_code=status.HTTP_201_CREATED)
 def register_subject_teacher(user: schemas.UserRegisterSubjectTeacher, db: Session = Depends(get_db)):
     """
     Subject teacher registration endpoint.
@@ -120,7 +136,9 @@ def register_subject_teacher(user: schemas.UserRegisterSubjectTeacher, db: Sessi
     - subject_name: Subject to teach (optional, can be added later via class management endpoint)
     
     Response:
-    - User object with role=subject_teacher
+    - user_id, email, full_name, role
+    - subject_id, subject_name: if assigned to a subject
+    - class_id: if joined a class
     """
     # Normalize email to lowercase
     normalized_email = user.email.lower()
@@ -167,6 +185,7 @@ def register_subject_teacher(user: schemas.UserRegisterSubjectTeacher, db: Sessi
     )
     
     db.add(db_subject_teacher)
+    subject_obj = None
     try:
         db.flush()
         
@@ -174,18 +193,36 @@ def register_subject_teacher(user: schemas.UserRegisterSubjectTeacher, db: Sessi
         if user.teacher_code and user.subject_name:
             class_obj = db.query(models.Class).filter(models.Class.teacher_code == user.teacher_code).first()
             
-            db_class_subject = models.ClassSubject(
+            subject_obj = models.ClassSubject(
                 class_id=class_obj.id,
                 subject_name=user.subject_name,
                 subject_teacher_id=db_subject_teacher.id
             )
-            db.add(db_class_subject)
+            db.add(subject_obj)
         
         db.commit()
         db.refresh(db_subject_teacher)
+        if subject_obj:
+            db.refresh(subject_obj)
         
         print(f"[+] Subject teacher registered: {db_subject_teacher.email}")
         
+        # Build response
+        response_data = {
+            "user_id": db_subject_teacher.id,
+            "email": db_subject_teacher.email,
+            "full_name": db_subject_teacher.full_name,
+            "role": db_subject_teacher.role,
+            "subject_id": subject_obj.id if subject_obj else None,
+            "subject_name": subject_obj.subject_name if subject_obj else None,
+            "class_id": class_obj.id if user.teacher_code else None,
+            "created_at": db_subject_teacher.created_at
+        }
+        return response_data
+        
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         print(f"[!] Error creating subject teacher: {e}")
@@ -193,11 +230,9 @@ def register_subject_teacher(user: schemas.UserRegisterSubjectTeacher, db: Sessi
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create subject teacher account. Please try again."
         )
-    
-    return db_subject_teacher
 
 
-@router.post("/register/student", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register/student", response_model=schemas.StudentRegistrationResponse, status_code=status.HTTP_201_CREATED)
 def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(get_db)):
     """
     Student registration endpoint.
@@ -210,7 +245,9 @@ def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(ge
     - student_code: Valid student code (format: SC-XXXX)
     
     Response:
-    - User object with role=student
+    - user_id, email, full_name, role
+    - class_id, class_name: The class the student joined
+    - student_code: The code used to join
     
     Errors:
     - 400: Email already registered
@@ -275,6 +312,21 @@ def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(ge
         
         print(f"[+] Student registered: {db_student.email}, Class: {class_obj.class_name}")
         
+        # Build response with class information
+        return {
+            "user_id": db_student.id,
+            "email": db_student.email,
+            "full_name": db_student.full_name,
+            "role": db_student.role,
+            "class_id": class_obj.id,
+            "class_name": class_obj.class_name,
+            "student_code": class_obj.student_code,
+            "created_at": db_student.created_at
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         print(f"[!] Error creating student: {e}")
@@ -282,8 +334,6 @@ def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(ge
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create student account. Please try again."
         )
-    
-    return db_student
 
 
 @router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED, deprecated=True)

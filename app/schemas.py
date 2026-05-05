@@ -188,6 +188,49 @@ class ClassMembershipResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# --- Registration Response Schemas ---
+class ClassTeacherRegistrationResponse(BaseModel):
+    """Response when class teacher registers. Includes class codes."""
+    user_id: UUID
+    email: str
+    full_name: str
+    role: str
+    class_id: UUID
+    student_code: str
+    teacher_code: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class SubjectTeacherRegistrationResponse(BaseModel):
+    """Response when subject teacher registers. Includes subject if joined class."""
+    user_id: UUID
+    email: str
+    full_name: str
+    role: str
+    subject_id: Optional[UUID] = None
+    subject_name: Optional[str] = None
+    class_id: Optional[UUID] = None
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class StudentRegistrationResponse(BaseModel):
+    """Response when student registers. Includes class info."""
+    user_id: UUID
+    email: str
+    full_name: str
+    role: str
+    class_id: UUID
+    class_name: str
+    student_code: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
 # --- Lesson Notes Schemas (Phase 2) ---
 class LessonNoteCreate(BaseModel):
     title: str
