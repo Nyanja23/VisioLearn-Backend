@@ -274,10 +274,17 @@ class LessonNoteListResponse(BaseModel):
     title: str
     subject: str
     grade_level: str
-    original_file_name: str
+    description: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    original_file_name: Optional[str] = None
     status: str
     created_at: datetime
     teacher_id: UUID
+    class_id: UUID
+    subject_id: UUID
+    
+    class Config:
+        from_attributes = True
 
     class Config:
         from_attributes = True
