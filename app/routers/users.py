@@ -29,8 +29,7 @@ def bootstrap_admin(user: schemas.UserCreate, db: Session = Depends(get_db)):
         email=normalized_email,
         full_name=user.full_name,
         role="admin",  # Force admin role for bootstrap
-        hashed_password=hashed_password,
-        school_id=user.school_id
+        hashed_password=hashed_password
     )
     
     db.add(db_user)
@@ -69,8 +68,7 @@ def create_user(
         email=normalized_email,
         full_name=user.full_name,
         role=user.role,
-        hashed_password=hashed_password,
-        school_id=user.school_id
+        hashed_password=hashed_password
     )
     
     db.add(db_user)

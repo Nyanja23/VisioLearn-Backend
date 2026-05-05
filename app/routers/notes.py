@@ -66,17 +66,9 @@ async def upload_lesson_note(
     # Create LessonNote record
     note_id = models.uuid.uuid4()
     
-    # Check if user has a school assigned
-    if not current_user.school_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Your user account is not assigned to a school. Contact administrator."
-        )
-    
     db_note = models.LessonNote(
         id=note_id,
         teacher_id=current_user.id,
-        school_id=current_user.school_id,
         title=title,
         subject=subject,
         grade_level=grade_level,
@@ -158,13 +150,12 @@ def list_lesson_notes(
         # Teachers see only their notes
         query = query.filter(models.LessonNote.teacher_id == current_user.id)
     else:  # student
-        # Students see notes assigned to them (TODO: implement with NoteAssignment)
-        query = query.filter(models.LessonNote.id.in_(
-            db.query(models.NoteAssignment.note_id).filter(
-                models.NoteAssignment.target_id == current_user.id,
-                models.NoteAssignment.target_type == "STUDENT"
-            )
-        ))
+        # Students see only their teacher's notes (via teacher_id relationship)
+        if not current_user.teacher_id:
+            # Student not linked to any teacher
+            query = query.filter(models.LessonNote.id == None)  # Return empty result
+        else:
+            query = query.filter(models.LessonNote.teacher_id == current_user.teacher_id)
     
     # Filter by subject
     if subject:
@@ -213,26 +204,19 @@ def get_lesson_note_details(
             detail="You don't have permission to view this note"
         )
     elif current_user.role == "student":
-        # Check if student has access to this note
-        assignment = db.query(models.NoteAssignment).filter(
-            models.NoteAssignment.note_id == note_id,
-            models.NoteAssignment.target_id == current_user.id,
-            models.NoteAssignment.target_type == "STUDENT"
-        ).first()
-        if not assignment:
+        # Check if student's teacher matches the note's teacher
+        if not current_user.teacher_id or current_user.teacher_id != note.teacher_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="This note is not assigned to you"
+                detail="This note is not available to you. You can only access your teacher's notes."
             )
     
     # Fetch related data
     teacher = note.teacher
-    school = note.school
     
     # Create response with additional fields
     response = schemas.LessonNoteDetailResponse.from_orm(note)
     response.teacher_name = teacher.full_name if teacher else "Unknown"
-    response.school_name = school.name if school else "Unknown"
     
     return response
 

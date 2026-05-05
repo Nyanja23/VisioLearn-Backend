@@ -95,8 +95,7 @@ def create_admin_internal(
             email=normalized_email,
             full_name="System Administrator",
             role="admin",
-            hashed_password=security.get_password_hash(request.password),
-            school_id=None
+            hashed_password=security.get_password_hash(request.password)
         )
         
         db.add(admin_user)
