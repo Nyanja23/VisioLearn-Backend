@@ -15,12 +15,13 @@ FastAPI Server ✅ | PostgreSQL ✅ | Authentication ✅ | API Docs ✅
 
 ```powershell
 # 1. Navigate to project
-cd C:\Users\josep\OneDrive\Documents\Project\Backend
+cd D:\Important\Project\VisioLearn-Backend
 
 # 2. Activate environment
 .\venv\Scripts\Activate.ps1
 
 # 3. Start backend
+$env:ADMIN_SECRET = "your_secret_key"
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -34,36 +35,58 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## 🔐 Test Account
+## 🔐 Default Accounts
 
+**Admin Account (Auto-created):**
 ```
 Email:    admin@visiolearn.org
-Password: SecurePass123!
+Password: AdminPass123!@
 Role:     admin
 ```
 
-Try logging in at: http://localhost:8000/docs → Click "Authorize" → Paste token
+**Teacher (Self-Register):**
+- Go to /docs → POST /api/v1/auth/register/teacher
+- Fills: email, full_name, password
+- Gets: auto-generated class_code (e.g., AB-1234)
 
----
+**Student (Self-Register):**
+- Go to /docs → POST /api/v1/auth/register/student
+- Fills: email, full_name, password, class_code (from teacher)
+- Auto-linked to teacher via teacher_id
 
 ## 📋 What's Included
 
-### ✅ Working Features
-- User authentication (JWT + refresh tokens)
-- Role-based access control (admin, teacher, student)
-- Password hashing with bcrypt
-- Token refresh for offline capability
-- User account management
-- PostgreSQL database with migrations
-- Comprehensive error handling
-- CORS configuration for development
+### ✅ Completed Features
 
-### 🔄 In Progress (Phase 2)
-- Content processing (PDF/Word uploads)
-- AI summarization endpoints
-- Text-to-speech integration
+**Phase 1-2: Database & Authentication**
+- ✅ Teacher-Student model (removed schools entirely)
+- ✅ Teacher auto-generates unique class codes
+- ✅ Student registration with class code validation
+- ✅ Role-based access control (admin, teacher, student)
+- ✅ JWT authentication with refresh tokens
+- ✅ Password hashing with bcrypt
+- ✅ Proper error handling and validation
 
-### 📦 Installed but Not Yet Used
+**Phase 3: Content Management**
+- ✅ Teachers upload lesson notes (PDFs, DOCX, TXT)
+- ✅ Content linked to teacher (teacher_id)
+- ✅ Students access only their teacher's content
+- ✅ Teachers view only their own content
+
+**Phase 4: Progress Tracking**
+- ✅ Students log progress while listening to audio
+- ✅ Track position, completion %, completion status
+- ✅ Teachers view all students in their class
+- ✅ Teachers view detailed progress per student
+- ✅ Students view personal progress summary
+
+**Phase 5: RBAC Middleware**
+- ✅ Role-based endpoint access control
+- ✅ Resource ownership validation
+- ✅ Teacher-student relationship enforcement
+- ✅ Content access filtering by teacher_id
+
+### 📦 In Development
 - spacy (NLP)
 - sentence-transformers (embeddings)
 - Celery + Redis (background jobs)
@@ -75,25 +98,45 @@ Try logging in at: http://localhost:8000/docs → Click "Authorize" → Paste to
 
 ### Authentication
 ```
-POST   /api/v1/auth/login     - Login with email/password
-POST   /api/v1/auth/refresh   - Get new access token
-POST   /api/v1/auth/logout    - Logout and revoke token
+POST   /api/v1/auth/register/teacher     - Teacher self-registration (auto-generates class_code)
+POST   /api/v1/auth/register/student     - Student self-registration (validates class_code)
+POST   /api/v1/auth/login                - Login with email/password
+POST   /api/v1/auth/refresh              - Get new access token
+POST   /api/v1/auth/logout               - Logout and revoke token
 ```
 
-### User Management
+### Content Management
 ```
-POST   /api/v1/users/         - Create new user (admin only)
-POST   /api/v1/users/bootstrap - Create first admin (disabled)
-```
-
-### Health
-```
-GET    /                      - API health check
-GET    /docs                  - Swagger interactive docs
-GET    /redoc                 - ReDoc documentation
+POST   /api/v1/notes/upload              - Teacher uploads lesson note
+GET    /api/v1/notes                     - List notes (filtered by role)
+GET    /api/v1/notes/{note_id}           - Get note details
+DELETE /api/v1/notes/{note_id}           - Teacher deletes own note
+GET    /api/v1/notes/{note_id}/units     - Get learning units from note
 ```
 
-All details in: http://localhost:8000/docs
+### Progress Tracking
+```
+POST   /api/v1/progress                  - Student logs progress on content
+GET    /api/v1/progress/me               - Student views personal progress summary
+GET    /api/v1/progress/students         - Teacher views all students in class
+GET    /api/v1/progress/students/{id}    - Teacher views detailed progress for student
+```
+
+### User Management (Admin)
+```
+POST   /api/v1/users/                    - Create new user (admin only)
+POST   /api/v1/users/bootstrap           - Create first admin (disabled after use)
+```
+
+### Health & Documentation
+```
+GET    /                                 - API health check
+GET    /health                           - Detailed health status
+GET    /docs                             - Swagger interactive docs
+GET    /redoc                            - ReDoc documentation
+```
+
+**All details and testing:** http://localhost:8000/docs
 
 ---
 
