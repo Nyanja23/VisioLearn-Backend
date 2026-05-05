@@ -24,6 +24,9 @@ async def lifespan(app: FastAPI):
         tables_to_create = [
             models.User,
             models.RefreshToken,
+            models.Class,
+            models.ClassSubject,
+            models.ClassMembership,
             models.LessonNote,
             models.LearningUnit,
             models.StudentProgress,
@@ -35,6 +38,9 @@ async def lifespan(app: FastAPI):
         tables_to_drop = [
             models.User.__table__,
             models.RefreshToken.__table__,
+            models.Class.__table__,
+            models.ClassSubject.__table__,
+            models.ClassMembership.__table__,
             models.LessonNote.__table__,
             models.LearningUnit.__table__,
             models.StudentProgress.__table__,

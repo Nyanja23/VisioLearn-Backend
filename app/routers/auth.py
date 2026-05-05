@@ -7,24 +7,25 @@ import jwt
 from .. import schemas, models, security
 from ..database import get_db
 from ..dependencies import get_current_user, require_admin
-from ..utils import generate_class_code
+from ..utils import generate_student_code, generate_teacher_code
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
-@router.post("/register/teacher", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
-def register_teacher(user: schemas.UserRegisterTeacher, db: Session = Depends(get_db)):
+@router.post("/register/class-teacher", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+def register_class_teacher(user: schemas.UserRegisterClassTeacher, db: Session = Depends(get_db)):
     """
-    Teacher registration endpoint.
-    Automatically generates a unique class code for the teacher.
+    Class teacher registration endpoint.
+    Creates both the user and a new class with auto-generated codes.
     
     Request body:
-    - email: Teacher's email address
-    - full_name: Teacher's full name
+    - email: Class teacher's email address
+    - full_name: Class teacher's full name
     - password: Strong password (12+ chars, uppercase, lowercase, digit, special char)
-    - role: Fixed to "teacher"
+    - class_name: Name of the class (e.g., "Year 9 Science")
     
     Response:
-    - User object with auto-generated class_code
+    - User object with role=class_teacher
+    - Also returns: class_id, student_code, teacher_code (via headers or extended response)
     """
     # Normalize email to lowercase
     normalized_email = user.email.lower()
@@ -35,69 +36,91 @@ def register_teacher(user: schemas.UserRegisterTeacher, db: Session = Depends(ge
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
-        )
-    
-    # Generate unique class code
-    class_code = generate_class_code()
-    
-    # Ensure generated class code is unique (retry up to 5 times, highly unlikely to collide)
-    max_retries = 5
-    for attempt in range(max_retries):
-        existing_code = db.query(models.User).filter(models.User.class_code == class_code).first()
-        if not existing_code:
-            break
-        class_code = generate_class_code()
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate unique class code. Please try again."
         )
     
     # Hash password
     hashed_password = security.get_password_hash(user.password)
     
-    # Create teacher user
+    # Create class teacher user
     db_teacher = models.User(
         email=normalized_email,
         full_name=user.full_name,
-        role="teacher",
-        class_code=class_code,
+        role="class_teacher",
         hashed_password=hashed_password
     )
     
     db.add(db_teacher)
     try:
+        db.flush()  # Flush to get the ID without committing
+        
+        # Generate unique codes for the class
+        student_code = generate_student_code()
+        teacher_code = generate_teacher_code()
+        
+        # Ensure codes are unique (retry up to 5 times each)
+        max_retries = 5
+        for _ in range(max_retries):
+            existing_student_code = db.query(models.Class).filter(models.Class.student_code == student_code).first()
+            if not existing_student_code:
+                break
+            student_code = generate_student_code()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate unique student code. Please try again."
+            )
+        
+        for _ in range(max_retries):
+            existing_teacher_code = db.query(models.Class).filter(models.Class.teacher_code == teacher_code).first()
+            if not existing_teacher_code:
+                break
+            teacher_code = generate_teacher_code()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate unique teacher code. Please try again."
+            )
+        
+        # Create the class
+        db_class = models.Class(
+            class_name=user.class_name,
+            class_teacher_id=db_teacher.id,
+            student_code=student_code,
+            teacher_code=teacher_code
+        )
+        
+        db.add(db_class)
         db.commit()
         db.refresh(db_teacher)
+        
+        print(f"[+] Class teacher registered: {db_teacher.email}, Class: {user.class_name}, Student Code: {student_code}, Teacher Code: {teacher_code}")
+        
     except Exception as e:
         db.rollback()
+        print(f"[!] Error creating class teacher: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create teacher account. Please try again."
+            detail="Failed to create class teacher account. Please try again."
         )
     
     return db_teacher
 
-@router.post("/register/student", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
-def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(get_db)):
+
+@router.post("/register/subject-teacher", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+def register_subject_teacher(user: schemas.UserRegisterSubjectTeacher, db: Session = Depends(get_db)):
     """
-    Student registration endpoint.
-    Links student to a teacher via the teacher's class code.
+    Subject teacher registration endpoint.
+    Creates a user and optionally adds them to a class with a subject assignment.
     
     Request body:
-    - email: Student's email address
-    - full_name: Student's full name
+    - email: Subject teacher's email address
+    - full_name: Subject teacher's full name
     - password: Strong password (12+ chars, uppercase, lowercase, digit, special char)
-    - class_code: Valid teacher class code (format: XX-XXXX)
-    - role: Fixed to "student"
+    - teacher_code: Valid class teacher code (format: TC-XXXX, optional for now)
+    - subject_name: Subject to teach (optional, can be added later via class management endpoint)
     
     Response:
-    - User object with teacher_id populated
-    
-    Errors:
-    - 400: Email already registered
-    - 400: Invalid class code (wrong format)
-    - 404: Class code not found (teacher doesn't exist)
+    - User object with role=subject_teacher
     """
     # Normalize email to lowercase
     normalized_email = user.email.lower()
@@ -110,26 +133,120 @@ def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(ge
             detail="Email already registered"
         )
     
-    # Validate class code format (XX-XXXX)
-    if not user.class_code or len(user.class_code) != 7 or user.class_code[2] != '-':
+    # If teacher_code provided, validate it
+    if user.teacher_code:
+        if len(user.teacher_code) != 7 or not user.teacher_code.startswith("TC-"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid teacher code format. Expected format: TC-XXXX"
+            )
+        
+        # Find class with this teacher code
+        class_obj = db.query(models.Class).filter(
+            and_(
+                models.Class.teacher_code == user.teacher_code,
+                models.Class.is_deleted == False
+            )
+        ).first()
+        
+        if not class_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Teacher code not found. Please verify the code with your class teacher."
+            )
+    
+    # Hash password
+    hashed_password = security.get_password_hash(user.password)
+    
+    # Create subject teacher user
+    db_subject_teacher = models.User(
+        email=normalized_email,
+        full_name=user.full_name,
+        role="subject_teacher",
+        hashed_password=hashed_password
+    )
+    
+    db.add(db_subject_teacher)
+    try:
+        db.flush()
+        
+        # If teacher_code and subject_name provided, create ClassSubject entry
+        if user.teacher_code and user.subject_name:
+            class_obj = db.query(models.Class).filter(models.Class.teacher_code == user.teacher_code).first()
+            
+            db_class_subject = models.ClassSubject(
+                class_id=class_obj.id,
+                subject_name=user.subject_name,
+                subject_teacher_id=db_subject_teacher.id
+            )
+            db.add(db_class_subject)
+        
+        db.commit()
+        db.refresh(db_subject_teacher)
+        
+        print(f"[+] Subject teacher registered: {db_subject_teacher.email}")
+        
+    except Exception as e:
+        db.rollback()
+        print(f"[!] Error creating subject teacher: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid class code format. Expected format: XX-XXXX (e.g., AB-1234)"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create subject teacher account. Please try again."
         )
     
-    # Find teacher with this class code
-    teacher = db.query(models.User).filter(
+    return db_subject_teacher
+
+
+@router.post("/register/student", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(get_db)):
+    """
+    Student registration endpoint.
+    Links student to a class via the student code.
+    
+    Request body:
+    - email: Student's email address
+    - full_name: Student's full name
+    - password: Strong password (12+ chars, uppercase, lowercase, digit, special char)
+    - student_code: Valid student code (format: SC-XXXX)
+    
+    Response:
+    - User object with role=student
+    
+    Errors:
+    - 400: Email already registered
+    - 400: Invalid student code format
+    - 404: Student code not found (class doesn't exist)
+    """
+    # Normalize email to lowercase
+    normalized_email = user.email.lower()
+    
+    # Check if email is already registered
+    existing_user = db.query(models.User).filter(models.User.email == normalized_email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Validate student code format (SC-XXXX)
+    if not user.student_code or len(user.student_code) != 7 or not user.student_code.startswith("SC-"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid student code format. Expected format: SC-XXXX"
+        )
+    
+    # Find class with this student code
+    class_obj = db.query(models.Class).filter(
         and_(
-            models.User.class_code == user.class_code,
-            models.User.role == "teacher",
-            models.User.is_deleted == False
+            models.Class.student_code == user.student_code,
+            models.Class.is_deleted == False
         )
     ).first()
     
-    if not teacher:
+    if not class_obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Class code not found. Please verify the code with your teacher."
+            detail="Student code not found. Please verify the code with your class teacher."
         )
     
     # Hash password
@@ -140,16 +257,27 @@ def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(ge
         email=normalized_email,
         full_name=user.full_name,
         role="student",
-        teacher_id=teacher.id,
         hashed_password=hashed_password
     )
     
     db.add(db_student)
     try:
+        db.flush()
+        
+        # Create ClassMembership to link student to class
+        db_membership = models.ClassMembership(
+            class_id=class_obj.id,
+            student_id=db_student.id
+        )
+        db.add(db_membership)
         db.commit()
         db.refresh(db_student)
+        
+        print(f"[+] Student registered: {db_student.email}, Class: {class_obj.class_name}")
+        
     except Exception as e:
         db.rollback()
+        print(f"[!] Error creating student: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create student account. Please try again."
@@ -157,16 +285,18 @@ def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(ge
     
     return db_student
 
+
 @router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED, deprecated=True)
-def register_legacy(user: schemas.UserRegisterTeacher, db: Session = Depends(get_db)):
+def register_legacy(user: schemas.UserRegisterClassTeacher, db: Session = Depends(get_db)):
     """
-    Deprecated: Use /register/teacher or /register/student instead.
+    Deprecated: Use /register/class-teacher, /register/subject-teacher, or /register/student instead.
     This endpoint is kept for backward compatibility only.
     """
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
-        detail="Endpoint deprecated. Use /api/v1/auth/register/teacher or /api/v1/auth/register/student"
+        detail="Endpoint deprecated. Use /api/v1/auth/register/class-teacher, /api/v1/auth/register/subject-teacher, or /api/v1/auth/register/student"
     )
+
 
 @router.post("/login", response_model=schemas.Token)
 def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
@@ -217,6 +347,7 @@ def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
         "refresh_token": refresh_token,
         "token_type": "bearer"
     }
+
 
 @router.post("/refresh", response_model=schemas.Token)
 def refresh_token(request: schemas.RefreshRequest, db: Session = Depends(get_db)):
@@ -273,6 +404,7 @@ def refresh_token(request: schemas.RefreshRequest, db: Session = Depends(get_db)
         "refresh_token": new_refresh_token,
         "token_type": "bearer"
     }
+
 
 @router.post("/logout")
 def logout(request: schemas.RefreshRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):

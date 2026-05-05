@@ -1,27 +1,31 @@
 """
 Role-Based Access Control (RBAC) Middleware and Dependencies
 
-Architecture:
-- Admin: Can view/manage all users, system monitoring (no school management)
-- Teacher: Registers with auto-generated class_code, uploads content, views own students
-- Student: Registers with teacher's class_code, accesses teacher's content, logs progress
-
-Teacher-Student Relationship:
-- Teacher has unique class_code (e.g., AB-1234)
-- Student provides class_code at registration
-- Student.teacher_id set to teacher's User.id
-- Students can only see notes from their linked teacher
-- Teachers can only see progress from their students
+Class-Based Multi-Subject Architecture:
+- Admin: System administrator, full access to all resources
+- ClassTeacher: Manages one class, has two auto-generated codes (student_code, teacher_code)
+  - Views all students in their class
+  - Views all subject teachers in their class
+  - Sees matrix view of student progress across all subjects
+- SubjectTeacher: Teaches one or more subjects in classes (joined via teacher_code)
+  - Uploads content for their subject(s) only
+  - Sees progress only for their subject(s)
+  - Can teach multiple subjects (not restricted to 1 subject)
+- Student: Member of a class (joined via student_code), has multiple subject teachers
+  - Views and accesses content from all subject teachers in their class
+  - Logs progress for each content item
+  - Sees their own progress across all subjects
 
 Access Control Rules:
-1. Teacher can upload/delete only their own content (notes.teacher_id == user.id)
-2. Student can access only their teacher's content (note.teacher_id == student.teacher_id)
-3. Teacher can view only their own students (student.teacher_id == teacher.id)
-4. Students cannot access /progress/students endpoint (teacher-only)
-5. Teachers cannot be students and vice versa
+1. ClassTeacher can upload/delete content only for classes they manage
+2. SubjectTeacher can upload/delete content only for their subject in assigned classes
+3. Student can access only content from subjects in their class
+4. ClassTeacher can view all students and all subject progress in their class
+5. SubjectTeacher can view only progress for their subject
+6. Student cannot view other students' progress
 
 This is enforced both at:
-- Dependency level (require_admin, require_teacher, require_student)
+- Dependency level (require_admin, require_class_teacher, require_subject_teacher, require_student)
 - Endpoint level (resource ownership checks in route handlers)
 """
 
@@ -34,7 +38,7 @@ from pydantic import ValidationError
 
 from .database import get_db
 from .security import SECRET_KEY, ALGORITHM
-from .models import User
+from .models import User, Class, ClassSubject
 from .schemas import TokenPayload
 
 # Use HTTP Bearer authentication (simpler than OAuth2PasswordBearer for JWT tokens)
@@ -78,42 +82,74 @@ class RoleChecker:
 
 # Convenience dependencies for specific roles
 require_admin = RoleChecker(["admin"])
-require_teacher = RoleChecker(["admin", "teacher"])
+require_class_teacher = RoleChecker(["admin", "class_teacher"])
+require_subject_teacher = RoleChecker(["admin", "subject_teacher"])
 require_student = RoleChecker(["student"])
+
+# Backward compatibility aliases (deprecated)
+require_teacher = require_class_teacher  # Maps old "teacher" role to "class_teacher"
 
 # Helper functions for resource ownership validation
 
-def verify_teacher_owns_content(teacher_id: UUID, current_user: User) -> bool:
+def verify_class_teacher_owns_class(class_id: UUID, current_user: User, db: Session) -> bool:
     """
-    Verify that current teacher user owns the specified content (by teacher_id).
+    Verify that current user is the class teacher for the specified class.
     Admin users always have access.
     """
     if current_user.role == "admin":
         return True
-    if current_user.role != "teacher":
+    if current_user.role != "class_teacher":
         return False
-    return current_user.id == teacher_id
+    
+    class_obj = db.query(Class).filter(Class.id == class_id).first()
+    if not class_obj:
+        return False
+    return class_obj.class_teacher_id == current_user.id
 
-def verify_student_can_access_teacher_content(teacher_id: UUID, current_user: User) -> bool:
+def verify_subject_teacher_can_teach_subject(subject_id: UUID, current_user: User, db: Session) -> bool:
     """
-    Verify that current student can access content from specified teacher.
-    Student must be linked to that teacher.
+    Verify that current user (subject teacher) can teach the specified subject.
+    Admin users always have access.
+    Subject teachers can teach multiple subjects (not restricted to 1).
+    """
+    if current_user.role == "admin":
+        return True
+    if current_user.role != "subject_teacher":
+        return False
+    
+    subject = db.query(ClassSubject).filter(ClassSubject.id == subject_id).first()
+    if not subject:
+        return False
+    return subject.subject_teacher_id == current_user.id
+
+def verify_student_in_class(class_id: UUID, current_user: User, db: Session) -> bool:
+    """
+    Verify that current student is a member of the specified class.
+    Admin users always have access.
     """
     if current_user.role == "admin":
         return True
     if current_user.role != "student":
         return False
-    return current_user.teacher_id == teacher_id
+    
+    from .models import ClassMembership
+    membership = db.query(ClassMembership).filter(
+        ClassMembership.class_id == class_id,
+        ClassMembership.student_id == current_user.id,
+        ClassMembership.left_at == None  # Still a member (not left)
+    ).first()
+    return membership is not None
 
-def verify_teacher_owns_student(student_id: UUID, current_user: User) -> bool:
+def verify_student_can_access_content(class_id: UUID, subject_id: UUID, current_user: User, db: Session) -> bool:
     """
-    Verify that current teacher has the specified student in their class.
-    Admin users always have access.
+    Verify that current student can access content in the specified class and subject.
+    Student must be in the class and the subject must exist in that class.
     """
-    if current_user.role == "admin":
-        return True
-    if current_user.role != "teacher":
+    if not verify_student_in_class(class_id, current_user, db):
         return False
-    # For this check, would need to query the database
-    # This is typically done in the endpoint handler instead
-    return True
+    
+    subject = db.query(ClassSubject).filter(
+        ClassSubject.id == subject_id,
+        ClassSubject.class_id == class_id
+    ).first()
+    return subject is not None

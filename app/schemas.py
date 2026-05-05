@@ -4,8 +4,8 @@ from typing import Optional, Literal
 from datetime import datetime
 import re
 
-# Valid user roles
-UserRole = Literal["admin", "teacher", "student"]
+# Valid user roles for new class-based system
+UserRole = Literal["admin", "class_teacher", "subject_teacher", "student"]
 
 # --- Token Schemas ---
 class Token(BaseModel):
@@ -48,8 +48,83 @@ class UserCreate(UserBase):
             raise ValueError('Password must contain at least one special character')
         return v
 
+class UserRegisterClassTeacher(BaseModel):
+    """Class teacher registration. System auto-generates student_code and teacher_code for class."""
+    email: EmailStr
+    full_name: str
+    password: str
+    class_name: str
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if len(v) < 12:
+            raise ValueError('Password must be at least 12 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('Password must contain at least one special character')
+        return v
+
+class UserRegisterSubjectTeacher(BaseModel):
+    """Subject teacher registration. Optionally joins class using teacher_code."""
+    email: EmailStr
+    full_name: str
+    password: str
+    teacher_code: Optional[str] = None
+    subject_name: Optional[str] = None
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if len(v) < 12:
+            raise ValueError('Password must be at least 12 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('Password must contain at least one special character')
+        return v
+
+class UserRegisterStudent(BaseModel):
+    """Student self-registration. Must provide valid student code to join class."""
+    email: EmailStr
+    full_name: str
+    password: str
+    student_code: str
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if len(v) < 12:
+            raise ValueError('Password must be at least 12 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('Password must contain at least one special character')
+        return v
+    
+    @field_validator('student_code')
+    @classmethod
+    def validate_student_code_format(cls, v: str) -> str:
+        if not re.match(r'^SC-[A-Z0-9]{4}$', v):
+            raise ValueError('Student code must be in format SC-XXXX (e.g., SC-9FX2)')
+        return v
+
+# --- Legacy schemas (deprecated, kept for reference) ---
 class UserRegisterTeacher(BaseModel):
-    """Teacher self-registration. System auto-generates class_code."""
+    """DEPRECATED: Use UserRegisterClassTeacher instead."""
     email: EmailStr
     full_name: str
     password: str
@@ -70,43 +145,46 @@ class UserRegisterTeacher(BaseModel):
             raise ValueError('Password must contain at least one special character')
         return v
 
-class UserRegisterStudent(BaseModel):
-    """Student self-registration. Must provide valid teacher class_code."""
-    email: EmailStr
-    full_name: str
-    password: str
-    class_code: str
-    role: Literal["student"] = "student"
-    
-    @field_validator('password')
-    @classmethod
-    def validate_password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError('Password must be at least 12 characters long')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('Password must contain at least one special character')
-        return v
-    
-    @field_validator('class_code')
-    @classmethod
-    def validate_class_code_format(cls, v: str) -> str:
-        if not re.match(r'^[A-Z]{2}-\d{4}$', v):
-            raise ValueError('Class code must be in format XX-XXXX (e.g., AB-1234)')
-        return v
-
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
     id: UUID
+    email: Optional[str] = None
+    full_name: str
+    role: UserRole
     created_at: datetime
     is_deleted: bool
-    class_code: Optional[str] = None
-    teacher_id: Optional[UUID] = None
 
+    class Config:
+        from_attributes = True
+
+# --- Class-Based System Schemas ---
+class ClassResponse(BaseModel):
+    id: UUID
+    class_name: str
+    class_teacher_id: UUID
+    student_code: str
+    teacher_code: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ClassSubjectResponse(BaseModel):
+    id: UUID
+    class_id: UUID
+    subject_name: str
+    subject_teacher_id: UUID
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ClassMembershipResponse(BaseModel):
+    id: UUID
+    class_id: UUID
+    student_id: UUID
+    joined_at: datetime
+    left_at: Optional[datetime] = None
+    
     class Config:
         from_attributes = True
 
