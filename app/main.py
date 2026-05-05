@@ -22,12 +22,12 @@ async def lifespan(app: FastAPI):
         # Create only the tables we need (skip analytics_events and ai_artefacts which have JSONB)
         # for SQLite compatibility
         tables_to_create = [
-            models.School,
             models.User,
             models.RefreshToken,
             models.LessonNote,
             models.LearningUnit,
             models.StudentProgress,
+            models.ContentProgress,
         ]
         
         for table_class in tables_to_create:
@@ -45,8 +45,7 @@ async def lifespan(app: FastAPI):
                     email="admin@visiolearn.org",
                     full_name="System Administrator",
                     role="admin",
-                    hashed_password=get_password_hash("AdminPass123!@"),
-                    school_id=None
+                    hashed_password=get_password_hash("AdminPass123!@")
                 )
                 db.add(admin)
                 db.commit()

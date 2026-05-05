@@ -8,34 +8,29 @@ from .database import Base
 def utc_now():
     return datetime.now(timezone.utc)
 
-class School(Base):
-    __tablename__ = "schools"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    region = Column(String(100))
-    created_at = Column(DateTime(timezone=True), default=utc_now)
-    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
-    is_deleted = Column(Boolean, default=False)
-    
-    users = relationship("User", back_populates="school")
-    notes = relationship("LessonNote", back_populates="school")
-
 class User(Base):
     __tablename__ = "users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id"), nullable=True)
     role = Column(String(50), nullable=False) # admin, teacher, student
     full_name = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=True)
     hashed_password = Column(String(255), nullable=False)
+    
+    # Teacher-specific fields
+    class_code = Column(String(10), unique=True, nullable=True)  # e.g., "AB-1234" for teachers
+    
+    # Student-specific fields
+    teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)  # For students
+    
     created_at = Column(DateTime(timezone=True), default=utc_now)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
     is_deleted = Column(Boolean, default=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
 
-    school = relationship("School", back_populates="users")
-    notes_uploaded = relationship("LessonNote", back_populates="teacher")
-    progress_records = relationship("StudentProgress", back_populates="student")
+    teacher = relationship("User", remote_side=[id], foreign_keys=[teacher_id])
+    students = relationship("User", remote_side=[teacher_id])
+    notes_uploaded = relationship("LessonNote", back_populates="teacher", foreign_keys="LessonNote.teacher_id")
+    progress_records = relationship("ContentProgress", back_populates="student")
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
@@ -50,7 +45,6 @@ class LessonNote(Base):
     __tablename__ = "lesson_notes"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id"), nullable=False)
     title = Column(String(255), nullable=False)
     subject = Column(String(100), nullable=False)
     grade_level = Column(String(50), nullable=False)
@@ -61,8 +55,7 @@ class LessonNote(Base):
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
     is_deleted = Column(Boolean, default=False)
 
-    teacher = relationship("User", back_populates="notes_uploaded")
-    school = relationship("School", back_populates="notes")
+    teacher = relationship("User", back_populates="notes_uploaded", foreign_keys=[teacher_id])
     units = relationship("LearningUnit", back_populates="note")
 
 class LearningUnit(Base):
@@ -103,6 +96,21 @@ class StudentProgress(Base):
     student = relationship("User", back_populates="progress_records")
     unit = relationship("LearningUnit", back_populates="progress_records")
 
+class ContentProgress(Base):
+    """Tracks student engagement with lesson content (listening, playback position, completion)"""
+    __tablename__ = "content_progress"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    note_id = Column(UUID(as_uuid=True), ForeignKey("lesson_notes.id"), nullable=False, index=True)
+    started_at = Column(DateTime(timezone=True), default=utc_now)
+    last_position_seconds = Column(Integer, default=0)
+    completed = Column(Boolean, default=False)
+    completion_percentage = Column(Float, default=0.0)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    
+    student = relationship("User", back_populates="progress_records")
+    note = relationship("LessonNote")
+
 class NoteAssignment(Base):
     __tablename__ = "note_assignments"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -116,7 +124,7 @@ class AnalyticsEvent(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     event_type = Column(String(100), nullable=False, index=True)
     event_data = Column(JSONB, nullable=False)
-    school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id"), nullable=True, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
 # --- VOICE INTERACTION ENTITIES (Amendment A) ---
@@ -156,8 +164,10 @@ class FreeAskExchange(Base):
     was_helpful = Column(Boolean, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
-# Create specific needed indexes mapping to PRD design
-Index('idx_notes_school_subject', LessonNote.school_id, LessonNote.subject)
+# Create specific needed indexes mapping to refactored design
+Index('idx_notes_teacher_subject', LessonNote.teacher_id, LessonNote.subject)
 Index('idx_units_note_seq', LearningUnit.note_id, LearningUnit.sequence_number)
 Index('idx_progress_student_unit', StudentProgress.student_id, StudentProgress.unit_id)
+Index('idx_content_progress_student_note', ContentProgress.student_id, ContentProgress.note_id)
 Index('idx_voice_interactions_session', VoiceInteraction.session_id, VoiceInteraction.sequence_number)
+Index('idx_students_teacher', User.teacher_id)
