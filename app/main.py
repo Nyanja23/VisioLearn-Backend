@@ -30,8 +30,22 @@ async def lifespan(app: FastAPI):
             models.ContentProgress,
         ]
         
-        for table_class in tables_to_create:
-            table_class.__table__.create(bind=engine, checkfirst=True)
+        # Drop existing tables if they have outdated schema and recreate
+        # Only create the tables we need (skip analytics_events and ai_artefacts which have JSONB)
+        tables_to_drop = [
+            models.User.__table__,
+            models.RefreshToken.__table__,
+            models.LessonNote.__table__,
+            models.LearningUnit.__table__,
+            models.StudentProgress.__table__,
+            models.ContentProgress.__table__,
+        ]
+        
+        for table in tables_to_drop:
+            table.drop(bind=engine, checkfirst=True)
+        
+        for table in tables_to_drop:
+            table.create(bind=engine)
         
         print("[+] Database tables ready")
         

@@ -27,8 +27,8 @@ class User(Base):
     is_deleted = Column(Boolean, default=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
 
-    teacher = relationship("User", remote_side=[id], foreign_keys=[teacher_id])
-    students = relationship("User", remote_side=[teacher_id])
+    teacher = relationship("User", remote_side=[id], foreign_keys=[teacher_id], viewonly=True)
+    students = relationship("User", remote_side=[teacher_id], overlaps="teacher")
     notes_uploaded = relationship("LessonNote", back_populates="teacher", foreign_keys="LessonNote.teacher_id")
     progress_records = relationship("ContentProgress", back_populates="student")
 
@@ -93,7 +93,7 @@ class StudentProgress(Base):
     offline_recorded_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), default=utc_now) # When synced
 
-    student = relationship("User", back_populates="progress_records")
+    student = relationship("User")
     unit = relationship("LearningUnit", back_populates="progress_records")
 
 class ContentProgress(Base):

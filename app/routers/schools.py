@@ -15,58 +15,28 @@ def list_schools_public(
     db: Session = Depends(get_db)
 ):
     """
-    List active schools for public browsing (registration).
-    No authentication required.
-    Returns school id, name, and region only.
+    Deprecated: Schools model has been removed. 
+    Use /api/v1/auth/register/teacher to create a teacher class instead.
+    Teachers automatically get a unique class code for students to join.
     """
-    schools = db.query(models.School).filter(
-        models.School.is_deleted == False
-    ).offset(skip).limit(limit).all()
-    
-    total = db.query(models.School).filter(
-        models.School.is_deleted == False
-    ).count()
-    
-    return {
-        "schools": [
-            {
-                "id": school.id,
-                "name": school.name,
-                "region": school.region
-            }
-            for school in schools
-        ],
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Schools endpoint deprecated. Use teacher registration with auto-generated class codes instead."
+    )
 
-@router.post("/", response_model=schemas.SchoolResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=dict, status_code=status.HTTP_201_CREATED)
 def create_school(
-    school: schemas.SchoolCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin)
 ):
     """
-    Create a new school. Requires admin authentication.
+    Deprecated: Schools model has been removed.
+    Teachers now manage their own classes with auto-generated class codes.
     """
-    db_school = models.School(
-        name=school.name,
-        region=school.region
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Schools endpoint deprecated. Teachers auto-generate class codes upon registration."
     )
-    
-    db.add(db_school)
-    try:
-        db.commit()
-        db.refresh(db_school)
-    except Exception:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create school"
-        )
-    
-    return db_school
 
 @router.get("/", response_model=dict)
 def list_schools(
@@ -76,80 +46,40 @@ def list_schools(
     current_user: models.User = Depends(require_admin)
 ):
     """
-    List all schools. Requires admin authentication.
+    Deprecated: Schools model has been removed.
     """
-    schools = db.query(models.School).filter(
-        models.School.is_deleted == False
-    ).offset(skip).limit(limit).all()
-    
-    total = db.query(models.School).filter(
-        models.School.is_deleted == False
-    ).count()
-    
-    return {
-        "schools": schools,
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Schools endpoint deprecated."
+    )
 
-@router.get("/{school_id}", response_model=schemas.SchoolResponse)
+@router.get("/{school_id}", response_model=dict)
 def get_school(
     school_id: UUID,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin)
 ):
     """
-    Get school details. Requires admin authentication.
+    Deprecated: Schools model has been removed.
     """
-    school = db.query(models.School).filter(
-        models.School.id == school_id,
-        models.School.is_deleted == False
-    ).first()
-    
-    if not school:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="School not found"
-        )
-    
-    return school
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Schools endpoint deprecated."
+    )
 
-@router.put("/{school_id}", response_model=schemas.SchoolResponse)
+@router.put("/{school_id}", response_model=dict)
 def update_school(
     school_id: UUID,
-    school_update: schemas.SchoolCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_admin)
 ):
     """
-    Update school details. Requires admin authentication.
+    Deprecated: Schools model has been removed.
     """
-    school = db.query(models.School).filter(
-        models.School.id == school_id,
-        models.School.is_deleted == False
-    ).first()
-    
-    if not school:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="School not found"
-        )
-    
-    school.name = school_update.name
-    school.region = school_update.region
-    
-    try:
-        db.commit()
-        db.refresh(school)
-    except Exception:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update school"
-        )
-    
-    return school
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Schools endpoint deprecated."
+    )
 
 @router.delete("/{school_id}")
 def delete_school(
@@ -158,28 +88,9 @@ def delete_school(
     current_user: models.User = Depends(require_admin)
 ):
     """
-    Soft delete a school. Requires admin authentication.
+    Deprecated: Schools model has been removed.
     """
-    school = db.query(models.School).filter(
-        models.School.id == school_id,
-        models.School.is_deleted == False
-    ).first()
-    
-    if not school:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="School not found"
-        )
-    
-    school.is_deleted = True
-    
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete school"
-        )
-    
-    return {"message": "School deleted successfully"}
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Schools endpoint deprecated."
+    )
