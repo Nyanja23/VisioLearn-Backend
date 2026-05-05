@@ -26,36 +26,61 @@ router = APIRouter(prefix="/api/v1/notes", tags=["notes"])
 async def upload_lesson_note(
     file: UploadFile = File(...),
     title: str = None,
-    subject: str = None,
+    subject_id: str = None,  # Now requires class subject ID
     grade_level: str = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_teacher)
 ):
     """
-    Upload a lesson note file (PDF, DOCX, or TXT)
+    Upload a lesson note file (PDF, DOCX, or TXT) for a specific class+subject.
     
-    Only teachers and admins can upload files.
+    Only subject_teachers can upload files.
     File will be validated, stored, and queued for async processing.
     
     Args:
         file: The lesson file (PDF, DOCX, or TXT)
         title: Lesson title
-        subject: Subject name
+        subject_id: UUID of the ClassSubject (required)
         grade_level: Target grade level
         
     Returns:
         LessonNoteResponse with upload status
     """
     
+    # Validate subject_id is provided
+    if not subject_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="subject_id (ClassSubject UUID) is required"
+        )
+    
+    # Get the ClassSubject to verify it exists and user teaches it
+    try:
+        class_subject = db.query(models.ClassSubject).filter(
+            models.ClassSubject.id == UUID(subject_id)
+        ).first()
+    except:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid subject_id format. Must be a valid UUID."
+        )
+    
+    if not class_subject:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subject not found"
+        )
+    
+    # Verify current user is the subject teacher for this subject
+    if current_user.role == "subject_teacher" and class_subject.subject_teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to upload content for this subject"
+        )
+    
     # Use filename as title if not provided
     if not title:
         title = file.filename.replace(".pdf", "").replace(".docx", "").replace(".txt", "")
-    
-    if not subject:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Subject is required"
-        )
     
     if not grade_level:
         raise HTTPException(
@@ -63,14 +88,16 @@ async def upload_lesson_note(
             detail="Grade level is required"
         )
     
-    # Create LessonNote record
+    # Create LessonNote record with class and subject IDs
     note_id = models.uuid.uuid4()
     
     db_note = models.LessonNote(
         id=note_id,
+        class_id=class_subject.class_id,
+        subject_id=class_subject.id,
         teacher_id=current_user.id,
         title=title,
-        subject=subject,
+        subject=class_subject.subject_name,  # Use actual subject name
         grade_level=grade_level,
         original_file_name=file.filename,
         status="PENDING_PROCESSING"
@@ -112,26 +139,27 @@ async def upload_lesson_note(
     return db_note
 
 
+
 @router.get("", response_model=List[schemas.LessonNoteListResponse])
 def list_lesson_notes(
     skip: int = 0,
     limit: int = 50,
-    subject: str = None,
+    subject_id: str = None,
     status: str = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    List lesson notes based on user role
+    List lesson notes based on user role and class+subject scoping.
     
     - Admins: See all notes
-    - Teachers: See own notes
-    - Students: See only shared/assigned notes (Future: implement with note_assignments)
+    - Subject Teachers: See only notes they uploaded
+    - Students: See only notes from subjects in their class (via ClassMembership)
     
     Args:
         skip: Pagination offset
         limit: Pagination limit (max 100)
-        subject: Filter by subject
+        subject_id: Filter by ClassSubject UUID
         status: Filter by status (PENDING_PROCESSING, READY, ERROR)
     """
     
@@ -142,24 +170,49 @@ def list_lesson_notes(
         models.LessonNote.is_deleted == False
     )
     
-    # Role-based filtering
+    # Role-based filtering with class+subject scoping
     if current_user.role == "admin":
         # Admins see all notes
         pass
-    elif current_user.role == "teacher":
-        # Teachers see only their notes
+    elif current_user.role == "subject_teacher":
+        # Subject teachers see only notes they uploaded
         query = query.filter(models.LessonNote.teacher_id == current_user.id)
-    else:  # student
-        # Students see only their teacher's notes (via teacher_id relationship)
-        if not current_user.teacher_id:
-            # Student not linked to any teacher
-            query = query.filter(models.LessonNote.id == None)  # Return empty result
+    elif current_user.role == "student":
+        # Students see notes from subjects in their class
+        # First, find all classes student is member of
+        student_classes = db.query(models.ClassMembership.class_id).filter(
+            models.ClassMembership.student_id == current_user.id,
+            models.ClassMembership.left_at == None
+        ).all()
+        
+        class_ids = [c[0] for c in student_classes]
+        
+        if not class_ids:
+            # Student not in any class, return no notes
+            query = query.filter(models.LessonNote.id == None)
         else:
-            query = query.filter(models.LessonNote.teacher_id == current_user.teacher_id)
+            # Get all subjects in student's classes
+            subject_ids = db.query(models.ClassSubject.id).filter(
+                models.ClassSubject.class_id.in_(class_ids)
+            ).all()
+            
+            subject_list = [s[0] for s in subject_ids]
+            
+            if subject_list:
+                query = query.filter(models.LessonNote.subject_id.in_(subject_list))
+            else:
+                query = query.filter(models.LessonNote.id == None)
     
-    # Filter by subject
-    if subject:
-        query = query.filter(models.LessonNote.subject.ilike(f"%{subject}%"))
+    # Filter by subject if specified
+    if subject_id:
+        try:
+            subject_uuid = UUID(subject_id)
+            query = query.filter(models.LessonNote.subject_id == subject_uuid)
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid subject_id format"
+            )
     
     # Filter by status
     if status:
@@ -174,6 +227,7 @@ def list_lesson_notes(
     return notes
 
 
+
 @router.get("/{note_id}", response_model=schemas.LessonNoteDetailResponse)
 def get_lesson_note_details(
     note_id: UUID,
@@ -181,9 +235,10 @@ def get_lesson_note_details(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Get detailed information about a lesson note
+    Get detailed information about a lesson note with class+subject context.
     
-    Includes teacher name, school name, and processing status
+    Includes teacher name, class info, subject info, and processing status.
+    Access control based on class membership and subject enrollment.
     """
     
     note = db.query(models.LessonNote).filter(
@@ -197,28 +252,52 @@ def get_lesson_note_details(
             detail="Lesson note not found"
         )
     
-    # Check access permission
-    if current_user.role == "teacher" and current_user.id != note.teacher_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to view this note"
-        )
-    elif current_user.role == "student":
-        # Check if student's teacher matches the note's teacher
-        if not current_user.teacher_id or current_user.teacher_id != note.teacher_id:
+    # Access control by role
+    if current_user.role == "admin":
+        pass  # Admin can access all
+    elif current_user.role == "subject_teacher":
+        # Subject teacher can only access their own notes
+        if current_user.id != note.teacher_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="This note is not available to you. You can only access your teacher's notes."
+                detail="You don't have permission to view this note"
+            )
+    elif current_user.role == "student":
+        # Student can access if they're in the class AND subject
+        is_member = db.query(models.ClassMembership).filter(
+            models.ClassMembership.class_id == note.class_id,
+            models.ClassMembership.student_id == current_user.id,
+            models.ClassMembership.left_at == None
+        ).first()
+        
+        if not is_member:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You're not a member of the class containing this content"
+            )
+        
+        # Verify the subject exists in their class
+        subject_in_class = db.query(models.ClassSubject).filter(
+            models.ClassSubject.id == note.subject_id,
+            models.ClassSubject.class_id == note.class_id
+        ).first()
+        
+        if not subject_in_class:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This subject is not available in your class"
             )
     
-    # Fetch related data
+    # Build response
     teacher = note.teacher
+    class_obj = note.class_obj
+    subject = note.class_subject
     
-    # Create response with additional fields
     response = schemas.LessonNoteDetailResponse.from_orm(note)
     response.teacher_name = teacher.full_name if teacher else "Unknown"
     
     return response
+
 
 
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)

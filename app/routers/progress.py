@@ -1,20 +1,24 @@
 """
-Progress Tracking Router - Student content engagement tracking
+Progress Tracking Router - Student content engagement tracking with class+subject scoping
 
 Tracks when students play audio notes, their progress, and completion status.
-Teachers can view their students' progress summaries.
+Teachers (class and subject) can view their students' progress summaries.
 Students can view their own progress reports.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .. import models, schemas
 from ..database import get_db
-from ..dependencies import get_current_user, require_student, require_teacher
+from ..dependencies import (
+    get_current_user, require_student, require_class_teacher, require_subject_teacher,
+    verify_student_in_class, verify_subject_teacher_can_teach_subject
+)
 
 router = APIRouter(prefix="/api/v1/progress", tags=["progress"])
 
@@ -30,10 +34,11 @@ def log_progress(
     current_user: models.User = Depends(require_student)
 ):
     """
-    Log student's progress on a content item.
+    Log student's progress on a content item (lesson note).
     
     Called when student plays/listens to a lesson note.
     Tracks: position, completion status, and timestamps.
+    Automatically captures class and subject context.
     
     Args:
         progress: ContentProgressCreate with note_id, position, completed flag
@@ -43,10 +48,10 @@ def log_progress(
         
     Raises:
         404: Note not found or not accessible to student
-        403: Student trying to access another student's notes
+        403: Student trying to access content outside their class
     """
     
-    # Verify note exists and belongs to student's teacher
+    # Verify note exists
     note = db.query(models.LessonNote).filter(
         models.LessonNote.id == progress.note_id,
         models.LessonNote.is_deleted == False
@@ -58,8 +63,14 @@ def log_progress(
             detail="Content not found"
         )
     
-    # Verify student's teacher matches note's teacher
-    if current_user.teacher_id != note.teacher_id:
+    # Verify student is in the class containing this note
+    is_member = db.query(models.ClassMembership).filter(
+        models.ClassMembership.class_id == note.class_id,
+        models.ClassMembership.student_id == current_user.id,
+        models.ClassMembership.left_at == None
+    ).first()
+    
+    if not is_member:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This content is not available to you"
@@ -75,7 +86,7 @@ def log_progress(
         # Update existing progress record
         existing.last_position_seconds = progress.last_position_seconds
         existing.completed = progress.completed
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = datetime.now(timezone.utc)
         
         # Calculate completion percentage
         # (assume average note length is ~1800 seconds = 30 minutes)
@@ -87,11 +98,14 @@ def log_progress(
         
         db_progress = existing
     else:
-        # Create new progress record
+        # Create new progress record with class and subject context
         db_progress = models.ContentProgress(
             student_id=current_user.id,
             note_id=progress.note_id,
-            started_at=datetime.utcnow(),
+            class_id=note.class_id,
+            subject_id=note.subject_id,
+            teacher_id=note.teacher_id,
+            started_at=datetime.now(timezone.utc),
             last_position_seconds=progress.last_position_seconds,
             completed=progress.completed,
             completion_percentage=min(
@@ -106,6 +120,7 @@ def log_progress(
         db.refresh(db_progress)
     except Exception as e:
         db.rollback()
+        print(f"[!] Failed to save progress: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save progress"
@@ -120,7 +135,7 @@ def get_my_progress(
     current_user: models.User = Depends(require_student)
 ):
     """
-    Get student's overall progress summary.
+    Get student's overall progress summary across all subjects.
     
     Shows: total notes accessed, completed notes count, average completion %.
     
@@ -128,9 +143,25 @@ def get_my_progress(
         StudentProgressSummary with aggregate statistics
     """
     
-    # Count total notes from student's teacher
+    # Get all classes student is member of
+    student_classes = db.query(models.ClassMembership).filter(
+        models.ClassMembership.student_id == current_user.id,
+        models.ClassMembership.left_at == None
+    ).all()
+    
+    class_ids = [m.class_id for m in student_classes]
+    
+    if not class_ids:
+        return schemas.StudentProgressSummary(
+            total_notes=0,
+            completed_notes=0,
+            avg_completion_percentage=0.0,
+            last_updated=None
+        )
+    
+    # Count total notes in student's classes
     total_notes = db.query(models.LessonNote).filter(
-        models.LessonNote.teacher_id == current_user.teacher_id,
+        models.LessonNote.class_id.in_(class_ids),
         models.LessonNote.is_deleted == False
     ).count()
     
@@ -161,32 +192,167 @@ def get_my_progress(
     )
 
 
-@router.get("/students", response_model=List[schemas.TeacherStudentSummary])
-def get_teacher_students(
+@router.get("/me/by-subject", response_model=List[dict])
+def get_my_progress_by_subject(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_teacher)
+    current_user: models.User = Depends(require_student)
 ):
     """
-    Get list of students enrolled in teacher's class.
+    Get student's progress broken down by subject.
+    
+    Shows progress for each subject the student is enrolled in.
+    
+    Returns:
+        List of { subject_name, completion_percentage, items_completed, total_items }
+    """
+    
+    # Get all classes student is in
+    student_memberships = db.query(models.ClassMembership).filter(
+        models.ClassMembership.student_id == current_user.id,
+        models.ClassMembership.left_at == None
+    ).all()
+    
+    class_ids = [m.class_id for m in student_memberships]
+    
+    if not class_ids:
+        return []
+    
+    # Get all subjects in student's classes
+    subjects = db.query(models.ClassSubject).filter(
+        models.ClassSubject.class_id.in_(class_ids)
+    ).all()
+    
+    result = []
+    for subject in subjects:
+        # Get student's progress for this subject
+        progress_records = db.query(models.ContentProgress).filter(
+            models.ContentProgress.student_id == current_user.id,
+            models.ContentProgress.subject_id == subject.id
+        ).all()
+        
+        completed_count = sum(1 for p in progress_records if p.completed)
+        avg_completion = (
+            sum(p.completion_percentage for p in progress_records) / len(progress_records)
+            if progress_records
+            else 0.0
+        )
+        
+        result.append({
+            "subject_id": str(subject.id),
+            "subject_name": subject.subject_name,
+            "teacher_name": subject.subject_teacher.full_name,
+            "completion_percentage": avg_completion,
+            "items_completed": completed_count,
+            "total_items": len(progress_records)
+        })
+    
+    return result
+
+
+@router.get("/by-subject/{subject_id}")
+def get_subject_progress(
+    subject_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_subject_teacher)
+):
+    """
+    Get all students' progress for a specific subject (subject_teacher only).
+    
+    Shows progress matrix for the subject across all students in its class.
+    Subject teacher can only access subjects they teach.
+    
+    Returns:
+        List of { student_id, email, full_name, completion_percentage, items_completed }
+    """
+    
+    # Get the subject
+    subject = db.query(models.ClassSubject).filter(
+        models.ClassSubject.id == subject_id
+    ).first()
+    
+    if not subject:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subject not found"
+        )
+    
+    # Verify current user is the subject teacher
+    if current_user.id != subject.subject_teacher_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't teach this subject"
+        )
+    
+    # Get all students in the class
+    memberships = db.query(models.ClassMembership).filter(
+        models.ClassMembership.class_id == subject.class_id,
+        models.ClassMembership.left_at == None
+    ).all()
+    
+    result = []
+    for membership in memberships:
+        # Get student's progress for this subject
+        progress_records = db.query(models.ContentProgress).filter(
+            models.ContentProgress.student_id == membership.student_id,
+            models.ContentProgress.subject_id == subject_id
+        ).all()
+        
+        completed_count = sum(1 for p in progress_records if p.completed)
+        avg_completion = (
+            sum(p.completion_percentage for p in progress_records) / len(progress_records)
+            if progress_records
+            else 0.0
+        )
+        
+        result.append({
+            "student_id": str(membership.student_id),
+            "email": membership.student.email,
+            "full_name": membership.student.full_name,
+            "completion_percentage": avg_completion,
+            "items_completed": completed_count,
+            "total_items": len(progress_records)
+        })
+    
+    return result
+
+
+@router.get("/students", response_model=List[schemas.TeacherStudentSummary])
+def get_class_students_progress(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_class_teacher)
+):
+    """
+    Get list of students enrolled in class teacher's class with progress summary.
     
     Returns student info and progress statistics for each student.
-    
-    Only teachers can access this endpoint.
+    Only class teachers can access this endpoint.
     
     Returns:
         List of TeacherStudentSummary objects for each student
     """
     
-    # Get all students linked to this teacher
-    students = db.query(models.User).filter(
-        models.User.teacher_id == current_user.id,
-        models.User.role == "student",
-        models.User.is_deleted == False
+    # Get all classes managed by this teacher
+    classes = db.query(models.Class).filter(
+        models.Class.class_teacher_id == current_user.id,
+        models.Class.is_deleted == False
+    ).all()
+    
+    class_ids = [c.id for c in classes]
+    
+    if not class_ids:
+        return []
+    
+    # Get all students in these classes
+    memberships = db.query(models.ClassMembership).filter(
+        models.ClassMembership.class_id.in_(class_ids),
+        models.ClassMembership.left_at == None
     ).all()
     
     result = []
     
-    for student in students:
+    for membership in memberships:
+        student = membership.student
+        
         # Get student's progress records
         progress_records = db.query(models.ContentProgress).filter(
             models.ContentProgress.student_id == student.id
@@ -221,12 +387,13 @@ def get_teacher_students(
 def get_student_progress_details(
     student_id: UUID,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_teacher)
+    current_user: models.User = Depends(require_class_teacher)
 ):
     """
-    Get detailed progress records for a specific student.
+    Get detailed progress records for a specific student in class.
     
     Shows all content accessed by student with completion details.
+    Class teacher can only access students in their class(es).
     
     Args:
         student_id: UUID of the student
@@ -239,18 +406,37 @@ def get_student_progress_details(
         403: Teacher trying to access another teacher's students
     """
     
-    # Verify student exists and belongs to this teacher
+    # Get the student
     student = db.query(models.User).filter(
         models.User.id == student_id,
         models.User.role == "student",
-        models.User.teacher_id == current_user.id,
         models.User.is_deleted == False
     ).first()
     
     if not student:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student not found or not in your class"
+            detail="Student not found"
+        )
+    
+    # Verify student is in one of the class teacher's classes
+    class_teacher_classes = db.query(models.Class.id).filter(
+        models.Class.class_teacher_id == current_user.id,
+        models.Class.is_deleted == False
+    ).all()
+    
+    class_ids = [c[0] for c in class_teacher_classes]
+    
+    student_in_class = db.query(models.ClassMembership).filter(
+        models.ClassMembership.student_id == student_id,
+        models.ClassMembership.class_id.in_(class_ids) if class_ids else False,
+        models.ClassMembership.left_at == None
+    ).first()
+    
+    if not student_in_class:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This student is not in your class"
         )
     
     # Get all progress records for this student
