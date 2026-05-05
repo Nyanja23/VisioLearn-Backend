@@ -94,8 +94,10 @@ class LessonNote(Base):
     title = Column(String(255), nullable=False)
     subject = Column(String(100), nullable=False)
     grade_level = Column(String(50), nullable=False)
-    file_url = Column(String(512), nullable=False)
-    original_file_name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)  # For audio content duration
+    file_url = Column(String(512), nullable=True)  # Optional for metadata-only notes
+    original_file_name = Column(String(255), nullable=True)
     status = Column(String(50), default="PENDING_PROCESSING") # PENDING_PROCESSING, READY, ERROR
     created_at = Column(DateTime(timezone=True), default=utc_now)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

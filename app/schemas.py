@@ -237,16 +237,31 @@ class LessonNoteCreate(BaseModel):
     subject: str
     grade_level: str
 
+class LessonNoteUpload(BaseModel):
+    """Upload lesson note with metadata"""
+    title: str
+    subject_id: str  # ClassSubject UUID as string
+    grade_level: str
+    description: Optional[str] = None
+    duration_seconds: Optional[int] = None
+
 class LessonNoteUpdate(BaseModel):
     title: Optional[str] = None
     subject: Optional[str] = None
     grade_level: Optional[str] = None
 
-class LessonNoteResponse(LessonNoteCreate):
+class LessonNoteResponse(BaseModel):
     id: UUID
+    title: str
+    subject: str
+    grade_level: str
+    description: Optional[str] = None
+    duration_seconds: Optional[int] = None
     teacher_id: UUID
-    file_url: str
-    original_file_name: str
+    class_id: UUID
+    subject_id: UUID
+    file_url: Optional[str] = None
+    original_file_name: Optional[str] = None
     status: str  # PENDING_PROCESSING, READY, ERROR
     created_at: datetime
     updated_at: datetime

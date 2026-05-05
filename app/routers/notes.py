@@ -23,43 +23,43 @@ router = APIRouter(prefix="/api/v1/notes", tags=["notes"])
     response_model=schemas.LessonNoteResponse,
     status_code=status.HTTP_201_CREATED
 )
-async def upload_lesson_note(
-    file: UploadFile = File(...),
-    title: str = None,
-    subject_id: str = None,  # Now requires class subject ID
-    grade_level: str = None,
+def upload_lesson_note(
+    upload_data: schemas.LessonNoteUpload,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_teacher)
+    current_user: models.User = Depends(get_current_user)
 ):
     """
-    Upload a lesson note file (PDF, DOCX, or TXT) for a specific class+subject.
+    Upload a lesson note with audio metadata (class+subject scoped).
     
-    Only subject_teachers can upload files.
-    File will be validated, stored, and queued for async processing.
+    For audio content, this creates a metadata record without requiring file upload.
+    Audio files are managed separately through the content storage system.
     
-    Args:
-        file: The lesson file (PDF, DOCX, or TXT)
-        title: Lesson title
-        subject_id: UUID of the ClassSubject (required)
-        grade_level: Target grade level
+    Only subject_teachers can upload content.
+    
+    Request body:
+    - title: Lesson title
+    - subject_id: UUID of the ClassSubject (required)
+    - grade_level: Target grade level
+    - description: Optional description
+    - duration_seconds: Duration of audio in seconds
         
     Returns:
-        LessonNoteResponse with upload status
+        LessonNoteResponse with note metadata
     """
     
-    # Validate subject_id is provided
-    if not subject_id:
+    # Only subject_teachers can upload content
+    if current_user.role not in ["subject_teacher", "admin"]:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="subject_id (ClassSubject UUID) is required"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only subject teachers can upload content"
         )
     
     # Get the ClassSubject to verify it exists and user teaches it
     try:
         class_subject = db.query(models.ClassSubject).filter(
-            models.ClassSubject.id == UUID(subject_id)
+            models.ClassSubject.id == UUID(upload_data.subject_id)
         ).first()
-    except:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid subject_id format. Must be a valid UUID."
@@ -78,16 +78,6 @@ async def upload_lesson_note(
             detail="You don't have permission to upload content for this subject"
         )
     
-    # Use filename as title if not provided
-    if not title:
-        title = file.filename.replace(".pdf", "").replace(".docx", "").replace(".txt", "")
-    
-    if not grade_level:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Grade level is required"
-        )
-    
     # Create LessonNote record with class and subject IDs
     note_id = models.uuid.uuid4()
     
@@ -96,24 +86,13 @@ async def upload_lesson_note(
         class_id=class_subject.class_id,
         subject_id=class_subject.id,
         teacher_id=current_user.id,
-        title=title,
+        title=upload_data.title,
         subject=class_subject.subject_name,  # Use actual subject name
-        grade_level=grade_level,
-        original_file_name=file.filename,
-        status="PENDING_PROCESSING"
+        grade_level=upload_data.grade_level,
+        description=upload_data.description,
+        duration_seconds=upload_data.duration_seconds,
+        status="READY"  # For metadata-only notes, mark as ready
     )
-    
-    # Save file to disk
-    try:
-        file_path = await FileManager.save_upload_file(file, str(note_id))
-        db_note.file_url = file_path
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"File storage error: {str(e)}"
-        )
     
     # Save to database
     db.add(db_note)
@@ -122,19 +101,10 @@ async def upload_lesson_note(
         db.refresh(db_note)
     except Exception as e:
         db.rollback()
-        # Try to cleanup file
-        try:
-            FileManager.delete_file(file_path)
-        except:
-            pass
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save lesson note record"
         )
-    
-    # Queue async processing task with Celery
-    from ..tasks.process_note import process_note_task
-    process_note_task.delay(str(note_id))
     
     return db_note
 
