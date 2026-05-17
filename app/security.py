@@ -63,14 +63,23 @@ def get_password_hash(password: str) -> str:
         # Extra safety: if passlib still complains, try direct truncation
         try:
             return pwd_context.hash(normalized)
-        except ValueError as ve:
-            if "72 bytes" in str(ve):
-                # Bcrypt failed with 72-byte error, force truncate and retry
-                print(f"[!] Bcrypt failed on normalized password, force truncating...")
+        except Exception as ve:
+            # If any error mentions 72 bytes, force truncate as last resort
+            error_msg = str(ve)
+            if "72 bytes" in error_msg or "72" in error_msg:
+                print(f"[!] Bcrypt 72-byte error detected: {error_msg}")
+                print(f"[!] Force truncating password to 72 bytes...")
                 # Truncate to 72 bytes directly as fallback
-                truncated = normalized.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-                return pwd_context.hash(truncated)
-            raise
+                try:
+                    truncated = normalized.encode('utf-8')[:72].decode('utf-8', errors='ignore')
+                    result = pwd_context.hash(truncated)
+                    print(f"[+] Password hashing succeeded after truncation")
+                    return result
+                except Exception as retry_err:
+                    print(f"[!] Even truncation failed: {retry_err}")
+                    raise ValueError(f"Failed to hash password after retry: {retry_err}")
+            # For other errors, just raise
+            raise ValueError(f"Failed to hash password: {ve}")
     except Exception as e:
         print(f"[!] Password hashing error: {e}")
         raise ValueError(f"Failed to hash password: {e}")
