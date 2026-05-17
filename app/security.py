@@ -59,10 +59,20 @@ def get_password_hash(password: str) -> str:
     """Hash a password using bcrypt."""
     try:
         normalized = _normalize_password_for_bcrypt(password)
-        return pwd_context.hash(normalized)
+        
+        # Extra safety: if passlib still complains, try direct truncation
+        try:
+            return pwd_context.hash(normalized)
+        except ValueError as ve:
+            if "72 bytes" in str(ve):
+                # Bcrypt failed with 72-byte error, force truncate and retry
+                print(f"[!] Bcrypt failed on normalized password, force truncating...")
+                # Truncate to 72 bytes directly as fallback
+                truncated = normalized.encode('utf-8')[:72].decode('utf-8', errors='ignore')
+                return pwd_context.hash(truncated)
+            raise
     except Exception as e:
         print(f"[!] Password hashing error: {e}")
-        # Fallback: return a placeholder hash (this shouldn't happen in production)
         raise ValueError(f"Failed to hash password: {e}")
 
 def create_access_token(subject: Union[str, Any], role: str, expires_delta: timedelta = None) -> str:
