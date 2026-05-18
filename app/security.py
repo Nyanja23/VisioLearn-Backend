@@ -79,18 +79,17 @@ def _hash_long_password(password: str) -> str:
         return password[:50]
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash using same MD5+base64 transformation."""
+    """Verify password against hash using same MD5 hex transformation."""
     # Apply same transformation as get_password_hash()
     plain_password = str(plain_password) if not isinstance(plain_password, str) else plain_password
     password_bytes = plain_password.encode('utf-8', errors='replace')
     
-    md5_digest = hashlib.md5(password_bytes).digest()
-    md5_b64 = base64.b64encode(md5_digest).decode('ascii')
+    md5_hex = hashlib.md5(password_bytes).hexdigest()
     
-    return pwd_context.verify(md5_b64, hashed_password)
+    return pwd_context.verify(md5_hex, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    """Hash password using MD5+base64 intermediate for guaranteed bcrypt safety."""
+    """Hash password using MD5 hex for guaranteed bcrypt safety."""
     print(f"[*] get_password_hash called with password length: {len(str(password))}")
     
     # STEP 1: Encode password to UTF-8
@@ -98,13 +97,13 @@ def get_password_hash(password: str) -> str:
     password_bytes = password.encode('utf-8', errors='replace')
     print(f"[*] Encoded to {len(password_bytes)} bytes")
     
-    # STEP 2: Create MD5 intermediate (always ~24 chars, well under 72 byte limit)
-    md5_digest = hashlib.md5(password_bytes).digest()
-    md5_b64 = base64.b64encode(md5_digest).decode('ascii')
-    print(f"[*] MD5+base64 intermediate created: {len(md5_b64)} chars")
+    # STEP 2: Create MD5 hex (always 32 chars, well under 72 byte limit)
+    md5_digest = hashlib.md5(password_bytes).hexdigest()
+    print(f"[*] MD5 hex created: {len(md5_digest)} chars (value: {md5_digest[:16]}...)")
     
-    # STEP 3: Hash the intermediate with bcrypt
-    bcrypt_hash = pwd_context.hash(md5_b64)
+    # STEP 3: Hash the hex with bcrypt
+    print(f"[*] About to call pwd_context.hash()...")
+    bcrypt_hash = pwd_context.hash(md5_digest)
     print(f"[+] bcrypt hash successful, hash length: {len(bcrypt_hash)}")
     
     return bcrypt_hash
