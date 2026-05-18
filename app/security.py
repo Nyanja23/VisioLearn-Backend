@@ -79,55 +79,30 @@ def _hash_long_password(password: str) -> str:
         return password[:50]
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify plain password against hashed password."""
-    try:
-        # Apply the same transformation as get_password_hash
-        plain_password = str(plain_password) if not isinstance(plain_password, str) else plain_password
-        password_bytes = plain_password.encode('utf-8', errors='ignore')
-        
-        # ALWAYS use intermediate (matching get_password_hash)
-        md5_hash = hashlib.md5(password_bytes).digest()
-        password_to_verify = base64.b64encode(md5_hash).decode('ascii')
-        
-        return pwd_context.verify(password_to_verify, hashed_password)
-        
-    except Exception as e:
-        print(f"[!] Password verification error: {e}")
-        return False
+    """Verify password against hash using same MD5+base64 transformation."""
+    # Apply same transformation as get_password_hash()
+    plain_password = str(plain_password) if not isinstance(plain_password, str) else plain_password
+    password_bytes = plain_password.encode('utf-8', errors='replace')
+    
+    md5_digest = hashlib.md5(password_bytes).digest()
+    md5_b64 = base64.b64encode(md5_digest).decode('ascii')
+    
+    return pwd_context.verify(md5_b64, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    """Hash a password using bcrypt with absolute fallback guarantees."""
-    try:
-        # AGGRESSIVE APPROACH: Always use intermediate for safety
-        # Convert to string if needed
-        password = str(password) if not isinstance(password, str) else password
-        password_bytes = password.encode('utf-8', errors='ignore')
-        
-        print(f"[*] Hashing password: {len(password_bytes)} bytes")
-        
-        # ALWAYS use intermediate hash - guarantees short input
-        try:
-            md5_hash = hashlib.md5(password_bytes).digest()
-            intermediate = base64.b64encode(md5_hash).decode('ascii')
-            print(f"[*] MD5+base64 intermediate: {len(intermediate)} chars")
-            
-            # Hash the intermediate
-            result = pwd_context.hash(intermediate)
-            print(f"[+] Success")
-            return result
-        except Exception as inner_err:
-            print(f"[!] Inner error: {inner_err}")
-            # Last resort: use hardcoded fallback
-            fallback = str(uuid.uuid4())[:20]
-            print(f"[!] Using UUID fallback: {fallback}")
-            return pwd_context.hash(fallback)
-            
-    except Exception as outer_err:
-        print(f"[!] Outer error: {outer_err}")
-        traceback.print_exc()
-        # Emergency: Never let hashing fail
-        # Return a valid bcrypt hash of a fixed string
-        raise ValueError(f"Password hashing failed: {str(outer_err)[:100]}")
+    """Hash password using MD5+base64 intermediate for guaranteed bcrypt safety."""
+    # STEP 1: Encode password to UTF-8
+    password = str(password) if not isinstance(password, str) else password
+    password_bytes = password.encode('utf-8', errors='replace')
+    
+    # STEP 2: Create MD5 intermediate (always ~24 chars, well under 72 byte limit)
+    md5_digest = hashlib.md5(password_bytes).digest()
+    md5_b64 = base64.b64encode(md5_digest).decode('ascii')
+    
+    # STEP 3: Hash the intermediate with bcrypt
+    bcrypt_hash = pwd_context.hash(md5_b64)
+    
+    return bcrypt_hash
 
 def create_access_token(subject: Union[str, Any], role: str, expires_delta: timedelta = None) -> str:
     if expires_delta:
