@@ -34,35 +34,17 @@ async def lifespan(app: FastAPI):
             models.ContentProgress,
         ]
         
-        # Drop existing tables if they have outdated schema and recreate
-        # Only create the tables we need (skip analytics_events and ai_artefacts which have JSONB)
-        tables_to_drop = [
-            models.User.__table__,
-            models.RefreshToken.__table__,
-            models.Class.__table__,
-            models.ClassSubject.__table__,
-            models.ClassMembership.__table__,
-            models.LessonNote.__table__,
-            models.LearningUnit.__table__,
-            models.StudentProgress.__table__,
-            models.ContentProgress.__table__,
-        ]
-        
-        # Disable foreign key constraints during table drop
-        with engine.begin() as conn:
-            conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
-            
-        for table in tables_to_drop:
-            table.drop(bind=engine, checkfirst=True)
-        
-        # Re-enable foreign key constraints
-        with engine.begin() as conn:
-            conn.exec_driver_sql("PRAGMA foreign_keys = ON")
-        
-        for table in tables_to_drop:
-            table.create(bind=engine)
-        
-        print("[+] Database tables ready")
+        # Create all necessary tables
+        try:
+            # Create all tables at once using SQLAlchemy's metadata
+            print("[*] Creating all tables...")
+            models.Base.metadata.create_all(bind=engine)
+            print("[+] Database tables ready")
+        except Exception as e:
+            print(f"[!] Table creation error: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         
         # Seed admin user if no users exist
         db = SessionLocal()
