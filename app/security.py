@@ -91,16 +91,21 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     """Hash password using MD5+base64 intermediate for guaranteed bcrypt safety."""
+    print(f"[*] get_password_hash called with password length: {len(str(password))}")
+    
     # STEP 1: Encode password to UTF-8
     password = str(password) if not isinstance(password, str) else password
     password_bytes = password.encode('utf-8', errors='replace')
+    print(f"[*] Encoded to {len(password_bytes)} bytes")
     
     # STEP 2: Create MD5 intermediate (always ~24 chars, well under 72 byte limit)
     md5_digest = hashlib.md5(password_bytes).digest()
     md5_b64 = base64.b64encode(md5_digest).decode('ascii')
+    print(f"[*] MD5+base64 intermediate created: {len(md5_b64)} chars")
     
     # STEP 3: Hash the intermediate with bcrypt
     bcrypt_hash = pwd_context.hash(md5_b64)
+    print(f"[+] bcrypt hash successful, hash length: {len(bcrypt_hash)}")
     
     return bcrypt_hash
 
