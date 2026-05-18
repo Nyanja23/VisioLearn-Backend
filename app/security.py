@@ -46,40 +46,55 @@ def _normalize_password_for_bcrypt(password: str) -> str:
     print("[!] Password longer than 72 bytes — truncating to bcrypt limit")
     return safe
 
+
+def _hash_long_password(password: str) -> str:
+    """Pre-hash long passwords with SHA256 to ensure bcrypt compatibility.
+    
+    If a password might exceed 72 bytes when encoded, hash it with SHA256
+    first to create a fixed-length input for bcrypt.
+    """
+    import hashlib
+    password_bytes = password.encode('utf-8')
+    
+    # If password is already short enough, return as-is
+    if len(password_bytes) <= 72:
+        return password
+    
+    # For longer passwords, use SHA256 as intermediate hash
+    sha_hash = hashlib.sha256(password_bytes).hexdigest()
+    print(f"[!] Password exceeds 72 bytes - using SHA256 intermediate hash")
+    return sha_hash
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify plain password against hashed password."""
+    """Verify plain password against hashed password.
+    
+    Handles both:
+    1. Passwords hashed with SHA256 intermediate (for >72 byte passwords)
+    2. Regular passwords (for <=72 byte passwords)
+    """
     try:
-        normalized = _normalize_password_for_bcrypt(plain_password)
+        # Apply the same intermediate hashing as get_password_hash
+        # This handles both short and long passwords consistently
+        intermediate = _hash_long_password(plain_password)
+        normalized = _normalize_password_for_bcrypt(intermediate)
+        
         return pwd_context.verify(normalized, hashed_password)
+        
     except Exception as e:
         print(f"[!] Password verification error: {e}")
         return False
 
 def get_password_hash(password: str) -> str:
-    """Hash a password using bcrypt."""
+    """Hash a password using bcrypt with SHA256 intermediate for safety."""
     try:
-        normalized = _normalize_password_for_bcrypt(password)
+        # First, apply SHA256 intermediate hashing for extra safety
+        # This ensures we never hit the 72-byte bcrypt limit
+        intermediate = _hash_long_password(password)
+        normalized = _normalize_password_for_bcrypt(intermediate)
         
-        # Extra safety: if passlib still complains, try direct truncation
-        try:
-            return pwd_context.hash(normalized)
-        except Exception as ve:
-            # If any error mentions 72 bytes, force truncate as last resort
-            error_msg = str(ve)
-            if "72 bytes" in error_msg or "72" in error_msg:
-                print(f"[!] Bcrypt 72-byte error detected: {error_msg}")
-                print(f"[!] Force truncating password to 72 bytes...")
-                # Truncate to 72 bytes directly as fallback
-                try:
-                    truncated = normalized.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-                    result = pwd_context.hash(truncated)
-                    print(f"[+] Password hashing succeeded after truncation")
-                    return result
-                except Exception as retry_err:
-                    print(f"[!] Even truncation failed: {retry_err}")
-                    raise ValueError(f"Failed to hash password after retry: {retry_err}")
-            # For other errors, just raise
-            raise ValueError(f"Failed to hash password: {ve}")
+        # Hash the normalized/intermediate password with bcrypt
+        return pwd_context.hash(normalized)
+        
     except Exception as e:
         print(f"[!] Password hashing error: {e}")
         raise ValueError(f"Failed to hash password: {e}")
