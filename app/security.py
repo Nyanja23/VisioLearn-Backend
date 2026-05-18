@@ -94,18 +94,32 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 def get_password_hash(password: str) -> str:
-    """Hash a password using bcrypt with SHA256 intermediate for safety."""
+    """Hash a password using bcrypt with intermediate hashing for safety."""
     try:
-        # First, apply SHA256 intermediate hashing for extra safety
-        # This ensures we never hit the 72-byte bcrypt limit
+        # Step 1: Apply intermediate hashing if needed
         intermediate = _hash_long_password(password)
-        normalized = _normalize_password_for_bcrypt(intermediate)
+        print(f"[*] Intermediate hash length: {len(intermediate)} chars, {len(intermediate.encode('utf-8'))} bytes")
         
-        # Hash the normalized/intermediate password with bcrypt
-        return pwd_context.hash(normalized)
+        # Step 2: Normalize for bcrypt (max 72 bytes)
+        normalized = _normalize_password_for_bcrypt(intermediate)
+        print(f"[*] Normalized length: {len(normalized)} chars, {len(normalized.encode('utf-8'))} bytes")
+        
+        # Step 3: Hash with bcrypt
+        try:
+            hash_result = pwd_context.hash(normalized)
+            print(f"[+] Password hashing succeeded")
+            return hash_result
+        except Exception as bcrypt_error:
+            print(f"[!] Bcrypt error: {bcrypt_error}")
+            # If still failing, force truncate to 50 bytes
+            truncated = normalized[:50]
+            print(f"[!] Force truncating to 50 chars: {len(truncated)} chars, {len(truncated.encode('utf-8'))} bytes")
+            return pwd_context.hash(truncated)
         
     except Exception as e:
         print(f"[!] Password hashing error: {e}")
+        import traceback
+        traceback.print_exc()
         raise ValueError(f"Failed to hash password: {e}")
 
 def create_access_token(subject: Union[str, Any], role: str, expires_delta: timedelta = None) -> str:
