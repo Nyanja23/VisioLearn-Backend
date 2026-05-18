@@ -29,44 +29,35 @@ def register_class_teacher(user: schemas.UserRegisterClassTeacher, db: Session =
     - student_code: Unique code for students to join (e.g., SC-XXXX)
     - teacher_code: Unique code for subject teachers to join (e.g., TC-XXXX)
     """
-    print(f"[*] register_class_teacher called for: {user.email}")
-    
-    # Normalize email to lowercase
-    normalized_email = user.email.lower()
-    
-    # Check if email is already registered
-    existing_user = db.query(models.User).filter(models.User.email == normalized_email).first()
-    if existing_user:
-        print(f"[!] Email already registered: {normalized_email}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Hash password
-    print(f"[*] About to hash password...")
     try:
+        print(f"[*] register_class_teacher called for: {user.email}")
+        
+        # Normalize email to lowercase
+        normalized_email = user.email.lower()
+        
+        # Check if email is already registered
+        existing_user = db.query(models.User).filter(models.User.email == normalized_email).first()
+        if existing_user:
+            print(f"[!] Email already registered: {normalized_email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        # Hash password
+        print(f"[*] About to hash password...")
         hashed_password = security.get_password_hash(user.password)
         print(f"[+] Password hashed successfully")
-    except Exception as e:
-        print(f"[!] Password hashing failed: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Password hashing failed: {str(e)[:100]}"
+        
+        # Create class teacher user
+        db_teacher = models.User(
+            email=normalized_email,
+            full_name=user.full_name,
+            role="class_teacher",
+            hashed_password=hashed_password
         )
-    
-    # Create class teacher user
-    db_teacher = models.User(
-        email=normalized_email,
-        full_name=user.full_name,
-        role="class_teacher",
-        hashed_password=hashed_password
-    )
-    
-    db.add(db_teacher)
-    try:
+        
+        db.add(db_teacher)
         db.flush()  # Flush to get the ID without committing
         
         # Generate unique codes for the class
@@ -130,9 +121,11 @@ def register_class_teacher(user: schemas.UserRegisterClassTeacher, db: Session =
     except Exception as e:
         db.rollback()
         print(f"[!] Error creating class teacher: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create class teacher account. Please try again."
+            detail=f"Failed to create class teacher account: {str(e)[:100]}"
         )
 
 
