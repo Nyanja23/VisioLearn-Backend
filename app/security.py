@@ -1,4 +1,8 @@
 import os
+import hashlib
+import base64
+import uuid
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union
 import jwt
@@ -13,7 +17,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 90))
 
 # Version marker for tracking deployments
-PASSWORD_HASHING_VERSION = "3.0-bulletproof"
+PASSWORD_HASHING_VERSION = "3.1-always-intermediate"
 
 # Initialize CryptContext with explicit bcrypt configuration
 pwd_context = CryptContext(
@@ -56,9 +60,6 @@ def _hash_long_password(password: str) -> str:
     Uses MD5 + base64 encoding to create a fixed-length, safe input
     for bcrypt that's guaranteed to be well under 72 bytes.
     """
-    import hashlib
-    import base64
-    
     password_bytes = password.encode('utf-8')
     
     # If password is already short enough, return as-is (simple case)
@@ -81,9 +82,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify plain password against hashed password."""
     try:
         # Apply the same transformation as get_password_hash
-        import hashlib
-        import base64
-        
         plain_password = str(plain_password) if not isinstance(plain_password, str) else plain_password
         password_bytes = plain_password.encode('utf-8', errors='ignore')
         
@@ -101,9 +99,6 @@ def get_password_hash(password: str) -> str:
     """Hash a password using bcrypt with absolute fallback guarantees."""
     try:
         # AGGRESSIVE APPROACH: Always use intermediate for safety
-        import hashlib
-        import base64
-        
         # Convert to string if needed
         password = str(password) if not isinstance(password, str) else password
         password_bytes = password.encode('utf-8', errors='ignore')
@@ -123,14 +118,12 @@ def get_password_hash(password: str) -> str:
         except Exception as inner_err:
             print(f"[!] Inner error: {inner_err}")
             # Last resort: use hardcoded fallback
-            import uuid
             fallback = str(uuid.uuid4())[:20]
             print(f"[!] Using UUID fallback: {fallback}")
             return pwd_context.hash(fallback)
             
     except Exception as outer_err:
         print(f"[!] Outer error: {outer_err}")
-        import traceback
         traceback.print_exc()
         # Emergency: Never let hashing fail
         # Return a valid bcrypt hash of a fixed string
