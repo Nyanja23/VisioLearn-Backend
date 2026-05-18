@@ -392,3 +392,118 @@ def get_unit_artefacts(
     artefacts = query.all()
     
     return artefacts
+
+
+@router.post(
+    "/upload-with-file",
+    response_model=schemas.LessonNoteResponse,
+    status_code=status.HTTP_201_CREATED
+)
+def upload_lesson_note_with_file(
+    title: str,
+    subject_id: str,
+    grade_level: str,
+    file: UploadFile = File(...),
+    description: str = None,
+    duration_seconds: int = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Upload a lesson note WITH an actual file (PDF, DOCX, TXT).
+    
+    This endpoint accepts file uploads alongside metadata.
+    
+    Args:
+        title: Lesson title
+        subject_id: UUID of the ClassSubject
+        grade_level: Target grade level
+        file: The lesson file (PDF, DOCX, or TXT)
+        description: Optional description
+        duration_seconds: Optional duration in seconds
+        
+    Returns:
+        LessonNoteResponse with file metadata
+    """
+    
+    # Only subject_teachers can upload content
+    if current_user.role not in ["subject_teacher", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only subject teachers can upload content"
+        )
+    
+    # Validate subject_id
+    try:
+        class_subject = db.query(models.ClassSubject).filter(
+            models.ClassSubject.id == UUID(subject_id)
+        ).first()
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid subject_id format. Must be a valid UUID."
+        )
+    
+    if not class_subject:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subject not found"
+        )
+    
+    # Verify permission
+    if current_user.role == "subject_teacher" and class_subject.subject_teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to upload content for this subject"
+        )
+    
+    # Validate and store file
+    try:
+        file_path = FileManager.save_file(file)
+        file_size = len(file.file.read())
+        file.file.seek(0)
+        
+        print(f"[+] File saved: {file_path}, Size: {file_size} bytes")
+    except FileStorageError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"File upload failed: {str(e)[:100]}"
+        )
+    
+    # Create LessonNote record with file information
+    note_id = models.uuid.uuid4()
+    
+    db_note = models.LessonNote(
+        id=note_id,
+        class_id=class_subject.class_id,
+        subject_id=class_subject.id,
+        teacher_id=current_user.id,
+        title=title,
+        subject=class_subject.subject_name,
+        grade_level=grade_level,
+        description=description or f"File: {file.filename}",
+        duration_seconds=duration_seconds,
+        file_url=str(file_path),
+        original_file_name=file.filename,
+        status="READY"  # File is stored, ready for processing
+    )
+    
+    # Save to database
+    db.add(db_note)
+    try:
+        db.commit()
+        db.refresh(db_note)
+        print(f"[+] Lesson note created: {db_note.id}, File: {file.filename}")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save lesson note: {str(e)[:100]}"
+        )
+    
+    return db_note
