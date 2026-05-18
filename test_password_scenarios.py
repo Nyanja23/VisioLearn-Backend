@@ -27,13 +27,14 @@ async def test_teacher_registration():
         try:
             hashed = get_password_hash(password)
             is_valid = verify_password(password, hashed)
-            status = "✓ PASS" if is_valid else "✗ FAIL"
+            status = "[+] PASS" if is_valid else "[!] FAIL"
             print(f"    {status}: Hash succeeded and verification works")
         except Exception as e:
-            print(f"    ✗ FAIL: {e}")
+            print(f"    [!] FAIL: {e}")
         print()
     
     print("[+] All password hashing tests completed!")
 
 if __name__ == "__main__":
     asyncio.run(test_teacher_registration())
+
