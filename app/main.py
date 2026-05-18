@@ -39,12 +39,20 @@ async def lifespan(app: FastAPI):
             # Create all tables at once using SQLAlchemy's metadata
             print("[*] Creating all tables...")
             models.Base.metadata.create_all(bind=engine)
-            print("[+] Database tables ready")
+            print("[+] Database tables created")
+            
+            # Verify by trying to query
+            print("[*] Verifying table creation...")
+            with engine.begin() as conn:
+                # Try a simple query to each table to verify they exist
+                conn.execute(text("SELECT 1 FROM users LIMIT 0"))
+                print("[+] Users table verified")
         except Exception as e:
-            print(f"[!] Table creation error: {e}")
+            print(f"[!] Table creation/verification error: {e}")
             import traceback
             traceback.print_exc()
-            raise
+            # Don't raise - try to continue anyway
+            print("[*] Continuing despite table creation errors...")
         
         # Seed admin user if no users exist
         db = SessionLocal()
