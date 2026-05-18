@@ -45,9 +45,14 @@ def register_class_teacher(user: schemas.UserRegisterClassTeacher, db: Session =
             )
         
         # Hash password
-        print(f"[*] About to hash password...")
-        hashed_password = security.get_password_hash(user.password)
-        print(f"[+] Password hashed successfully")
+        print(f"[*] register_class_teacher: About to hash password...")
+        try:
+            print(f"[*] register_class_teacher: Calling security.get_password_hash()")
+            hashed_password = security.get_password_hash(user.password)
+            print(f"[+] register_class_teacher: Password hashed successfully")
+        except Exception as hash_error:
+            print(f"[!] register_class_teacher: Password hashing exception: {hash_error}")
+            raise
         
         # Create class teacher user
         db_teacher = models.User(

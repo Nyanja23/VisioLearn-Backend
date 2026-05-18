@@ -98,29 +98,40 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     """Hash password using bcrypt directly with MD5 hex intermediate."""
-    print(f"[*] get_password_hash called")
+    print(f"[*] get_password_hash: START")
     
-    # Convert to string and encode
-    password = str(password) if not isinstance(password, str) else password
-    password_bytes = password.encode('utf-8', errors='replace')
-    print(f"[*] Input: {len(password_bytes)} bytes")
-    
-    # Create MD5 hex intermediate
-    md5_hex = hashlib.md5(password_bytes).hexdigest()
-    print(f"[*] MD5 hex: {len(md5_hex)} chars")
-    
-    # Hash directly with bcrypt (bypass passlib)
-    md5_hex_bytes = md5_hex.encode('utf-8')
-    print(f"[*] MD5 hex encoded: {len(md5_hex_bytes)} bytes")
-    
-    salt = bcrypt.gensalt(rounds=12)
-    print(f"[*] Salt generated")
-    
-    bcrypt_hash = bcrypt.hashpw(md5_hex_bytes, salt)
-    print(f"[*] Bcrypt hash created")
-    
-    # Return as string
-    return bcrypt_hash.decode('utf-8')
+    try:
+        # Convert to string and encode
+        print(f"[*] get_password_hash: Converting to string")
+        password = str(password) if not isinstance(password, str) else password
+        password_bytes = password.encode('utf-8', errors='replace')
+        print(f"[*] get_password_hash: Encoded to {len(password_bytes)} bytes")
+        
+        # Create MD5 hex intermediate
+        print(f"[*] get_password_hash: Computing MD5 hash")
+        md5_hex = hashlib.md5(password_bytes).hexdigest()
+        print(f"[*] get_password_hash: MD5 hex created: {len(md5_hex)} chars")
+        
+        # Hash directly with bcrypt (bypass passlib)
+        print(f"[*] get_password_hash: Encoding MD5 hex to bytes")
+        md5_hex_bytes = md5_hex.encode('utf-8')
+        print(f"[*] get_password_hash: MD5 hex encoded: {len(md5_hex_bytes)} bytes")
+        
+        print(f"[*] get_password_hash: Generating salt with bcrypt.gensalt()")
+        salt = bcrypt.gensalt(rounds=12)
+        print(f"[*] get_password_hash: Salt generated")
+        
+        print(f"[*] get_password_hash: Calling bcrypt.hashpw()")
+        bcrypt_hash = bcrypt.hashpw(md5_hex_bytes, salt)
+        print(f"[*] get_password_hash: Bcrypt hash created")
+        
+        # Return as string
+        result = bcrypt_hash.decode('utf-8')
+        print(f"[+] get_password_hash: SUCCESS, hash length: {len(result)}")
+        return result
+    except Exception as e:
+        print(f"[!] get_password_hash: ERROR - {e}")
+        raise
 
 def create_access_token(subject: Union[str, Any], role: str, expires_delta: timedelta = None) -> str:
     if expires_delta:
