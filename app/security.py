@@ -48,22 +48,31 @@ def _normalize_password_for_bcrypt(password: str) -> str:
 
 
 def _hash_long_password(password: str) -> str:
-    """Pre-hash long passwords with SHA256 to ensure bcrypt compatibility.
+    """Pre-hash long passwords to ensure bcrypt compatibility.
     
-    If a password might exceed 72 bytes when encoded, hash it with SHA256
-    first to create a fixed-length input for bcrypt.
+    Uses MD5 + base64 encoding to create a fixed-length, safe input
+    for bcrypt that's guaranteed to be well under 72 bytes.
     """
     import hashlib
+    import base64
+    
     password_bytes = password.encode('utf-8')
     
-    # If password is already short enough, return as-is
-    if len(password_bytes) <= 72:
+    # If password is already short enough, return as-is (simple case)
+    if len(password_bytes) <= 50:  # Conservative: 50 bytes of margin
         return password
     
-    # For longer passwords, use SHA256 as intermediate hash
-    sha_hash = hashlib.sha256(password_bytes).hexdigest()
-    print(f"[!] Password exceeds 72 bytes - using SHA256 intermediate hash")
-    return sha_hash
+    # For longer passwords, use MD5 + base64 (compact representation)
+    # MD5 is 16 bytes -> base64 is ~24 chars, very safe for bcrypt
+    try:
+        md5_hash = hashlib.md5(password_bytes).digest()
+        b64_hash = base64.b64encode(md5_hash).decode('ascii')
+        print(f"[!] Password too long ({len(password_bytes)} bytes) - using MD5+base64 intermediate")
+        return b64_hash
+    except Exception as e:
+        print(f"[!] Intermediate hashing failed: {e}")
+        # Fallback: truncate directly
+        return password[:50]
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify plain password against hashed password.
