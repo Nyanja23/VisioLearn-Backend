@@ -12,6 +12,9 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 90))
 
+# Version marker for tracking deployments
+PASSWORD_HASHING_VERSION = "2.3-md5-base64-logging"
+
 # Initialize CryptContext with explicit bcrypt configuration
 pwd_context = CryptContext(
     schemes=["bcrypt"],

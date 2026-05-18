@@ -10,13 +10,14 @@ from sqlalchemy import text
 from .routers import auth, users, notes, voice, schools, internal, progress, classes
 from .database import SessionLocal, engine
 from . import models
-from .security import get_password_hash
+from .security import get_password_hash, PASSWORD_HASHING_VERSION
 
 load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    print(f"[*] VisioLearn Backend starting - Password hashing: {PASSWORD_HASHING_VERSION}")
     print("[*] Initializing database...")
     try:
         # Create only the tables we need (skip analytics_events and ai_artefacts which have JSONB)
