@@ -3,6 +3,7 @@ import hashlib
 import base64
 import uuid
 import traceback
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union
 import jwt
@@ -79,34 +80,47 @@ def _hash_long_password(password: str) -> str:
         return password[:50]
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash using same MD5 hex transformation."""
-    # Apply same transformation as get_password_hash()
-    plain_password = str(plain_password) if not isinstance(plain_password, str) else plain_password
-    password_bytes = plain_password.encode('utf-8', errors='replace')
-    
-    md5_hex = hashlib.md5(password_bytes).hexdigest()
-    
-    return pwd_context.verify(md5_hex, hashed_password)
+    """Verify password using bcrypt directly with same MD5 hex transformation."""
+    try:
+        # Apply same transformation as get_password_hash()
+        plain_password = str(plain_password) if not isinstance(plain_password, str) else plain_password
+        password_bytes = plain_password.encode('utf-8', errors='replace')
+        
+        md5_hex = hashlib.md5(password_bytes).hexdigest()
+        md5_hex_bytes = md5_hex.encode('utf-8')
+        
+        # Verify directly with bcrypt (bypass passlib)
+        hashed_bytes = hashed_password.encode('utf-8') if isinstance(hashed_password, str) else hashed_password
+        return bcrypt.checkpw(md5_hex_bytes, hashed_bytes)
+    except Exception as e:
+        print(f"[!] Verification error: {e}")
+        return False
 
 def get_password_hash(password: str) -> str:
-    """Hash password using MD5 hex for guaranteed bcrypt safety."""
-    print(f"[*] get_password_hash called with password length: {len(str(password))}")
+    """Hash password using bcrypt directly with MD5 hex intermediate."""
+    print(f"[*] get_password_hash called")
     
-    # STEP 1: Encode password to UTF-8
+    # Convert to string and encode
     password = str(password) if not isinstance(password, str) else password
     password_bytes = password.encode('utf-8', errors='replace')
-    print(f"[*] Encoded to {len(password_bytes)} bytes")
+    print(f"[*] Input: {len(password_bytes)} bytes")
     
-    # STEP 2: Create MD5 hex (always 32 chars, well under 72 byte limit)
-    md5_digest = hashlib.md5(password_bytes).hexdigest()
-    print(f"[*] MD5 hex created: {len(md5_digest)} chars (value: {md5_digest[:16]}...)")
+    # Create MD5 hex intermediate
+    md5_hex = hashlib.md5(password_bytes).hexdigest()
+    print(f"[*] MD5 hex: {len(md5_hex)} chars")
     
-    # STEP 3: Hash the hex with bcrypt
-    print(f"[*] About to call pwd_context.hash()...")
-    bcrypt_hash = pwd_context.hash(md5_digest)
-    print(f"[+] bcrypt hash successful, hash length: {len(bcrypt_hash)}")
+    # Hash directly with bcrypt (bypass passlib)
+    md5_hex_bytes = md5_hex.encode('utf-8')
+    print(f"[*] MD5 hex encoded: {len(md5_hex_bytes)} bytes")
     
-    return bcrypt_hash
+    salt = bcrypt.gensalt(rounds=12)
+    print(f"[*] Salt generated")
+    
+    bcrypt_hash = bcrypt.hashpw(md5_hex_bytes, salt)
+    print(f"[*] Bcrypt hash created")
+    
+    # Return as string
+    return bcrypt_hash.decode('utf-8')
 
 def create_access_token(subject: Union[str, Any], role: str, expires_delta: timedelta = None) -> str:
     if expires_delta:
