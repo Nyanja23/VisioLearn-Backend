@@ -399,7 +399,7 @@ def get_unit_artefacts(
     response_model=schemas.LessonNoteResponse,
     status_code=status.HTTP_201_CREATED
 )
-def upload_lesson_note_with_file(
+async def upload_lesson_note_with_file(
     title: str,
     subject_id: str,
     grade_level: str,
@@ -457,13 +457,13 @@ def upload_lesson_note_with_file(
             detail="You don't have permission to upload content for this subject"
         )
     
-    # Validate and store file
+    # Create LessonNote record first (to get ID for file storage)
+    note_id = models.uuid.uuid4()
+    
+    # Validate and store file with note_id
     try:
-        file_path = FileManager.save_file(file)
-        file_size = len(file.file.read())
-        file.file.seek(0)
-        
-        print(f"[+] File saved: {file_path}, Size: {file_size} bytes")
+        file_path = await FileManager.save_upload_file(file, str(note_id))
+        print(f"[+] File saved: {file_path}")
     except FileStorageError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -476,8 +476,6 @@ def upload_lesson_note_with_file(
         )
     
     # Create LessonNote record with file information
-    note_id = models.uuid.uuid4()
-    
     db_note = models.LessonNote(
         id=note_id,
         class_id=class_subject.class_id,
@@ -488,7 +486,7 @@ def upload_lesson_note_with_file(
         grade_level=grade_level,
         description=description or f"File: {file.filename}",
         duration_seconds=duration_seconds,
-        file_url=str(file_path),
+        file_url=file_path,
         original_file_name=file.filename,
         status="READY"  # File is stored, ready for processing
     )
