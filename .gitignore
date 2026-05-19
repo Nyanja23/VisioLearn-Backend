@@ -84,6 +84,5 @@ docker-compose.override.yml
 .copilot/
 session-state/
 
-# Alembic versions (auto-generated)
-alembic/versions/*.py
-!alembic/versions/
+# Alembic versions should be tracked in git for reproducible migrations
+# Do not ignore alembic/versions/*.py
