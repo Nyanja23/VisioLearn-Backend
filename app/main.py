@@ -19,6 +19,44 @@ async def lifespan(app: FastAPI):
     # Startup
     print(f"[*] VisioLearn Backend starting - Password hashing: {PASSWORD_HASHING_VERSION}")
     print("[*] Initializing database...")
+    
+    # Run Alembic migrations
+    try:
+        print("[*] Running database migrations...")
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+        from alembic.runtime.migration import MigrationContext
+        from alembic.operations import Operations
+        
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", "sqlite:///visiolearn.db"))
+        
+        with engine.begin() as connection:
+            ctx = MigrationContext.configure(connection)
+            op = Operations(ctx)
+            
+            # Get current revision
+            current_rev = ctx.get_current_revision()
+            print(f"[*] Current revision: {current_rev}")
+            
+            # Get target revision
+            script = ScriptDirectory.from_config(alembic_cfg)
+            target_rev = script.get_current_head()
+            print(f"[*] Target revision: {target_rev}")
+            
+            if current_rev != target_rev:
+                print(f"[*] Running migrations from {current_rev} to {target_rev}...")
+                from alembic.command import upgrade
+                upgrade(alembic_cfg, 'head')
+                print("[+] Migrations completed")
+            else:
+                print("[+] Database is up to date")
+    except Exception as e:
+        print(f"[!] Migration error: {e}")
+        import traceback
+        traceback.print_exc()
+        print("[*] Continuing despite migration errors...")
+    
     try:
         # Create only the tables we need (skip analytics_events and ai_artefacts which have JSONB)
         # for SQLite compatibility
