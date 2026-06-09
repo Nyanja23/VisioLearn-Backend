@@ -88,8 +88,8 @@ class ClassMembership(Base):
 class LessonNote(Base):
     __tablename__ = "lesson_notes"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=False, index=True)
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("class_subjects.id"), nullable=False, index=True)
+    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=True, index=True)
+    subject_id = Column(UUID(as_uuid=True), ForeignKey("class_subjects.id"), nullable=True, index=True)
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     subject = Column(String(100), nullable=False)
