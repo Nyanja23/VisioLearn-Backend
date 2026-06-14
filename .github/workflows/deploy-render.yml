@@ -75,7 +75,7 @@ jobs:
             deployment_id: deployment.data.id,
             state: 'in_progress',
             description: 'Deployment in progress',
-            environment_url: 'https://visiolearn.onrender.com'
+            environment_url: 'https://visiolearn-backend.onrender.com'
           });
 
   post-deploy-checks:
@@ -92,7 +92,7 @@ jobs:
         while [ $attempt -le $max_attempts ]; do
           echo "Attempt $attempt of $max_attempts..."
           
-          if curl -f https://visiolearn.onrender.com/docs > /dev/null 2>&1; then
+          if curl -f https://visiolearn-backend.onrender.com/docs > /dev/null 2>&1; then
             echo "✅ Health check passed!"
             exit 0
           fi
@@ -110,7 +110,7 @@ jobs:
         echo "🔍 Verifying API endpoints..."
         
         # Check Swagger docs
-        if curl -f https://visiolearn.onrender.com/openapi.json > /dev/null 2>&1; then
+        if curl -f https://visiolearn-backend.onrender.com/openapi.json > /dev/null 2>&1; then
           echo "✅ OpenAPI schema accessible"
         else
           echo "❌ OpenAPI schema not accessible"
