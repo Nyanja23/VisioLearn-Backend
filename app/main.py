@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.utils import get_openapi
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -148,6 +149,11 @@ def get_allowed_origins() -> list[str]:
     return [origin.strip() for origin in origins_str.split(",") if origin.strip()]
 
 allowed_origins = get_allowed_origins()
+
+# Compress JSON payloads (lesson units, artefacts, notes lists) — text
+# compresses 5-10x, which matters enormously on the slow/expensive mobile
+# data connections the app's target users in Uganda are on.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 app.add_middleware(
     CORSMiddleware,
