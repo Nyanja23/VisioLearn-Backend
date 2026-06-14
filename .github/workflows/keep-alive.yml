@@ -1,0 +1,56 @@
+name: Keep backend warm
+
+# The backend runs on Render's free tier, which spins the instance down after
+# ~15 minutes of inactivity; the first request after that takes 30-60s (a cold
+# start). Pinging it on a schedule during school hours keeps it awake so a
+# student never waits on a cold backend.
+#
+# NOTES / REQUIREMENTS:
+#   * Scheduled workflows only run from the DEFAULT branch once this file is
+#     pushed there, with Actions enabled.
+#   * GitHub disables scheduled workflows after 60 days with no repo commits
+#     (this repo deploys regularly, so that's not a concern).
+#   * Scheduled runs are best-effort and can be delayed a few minutes under
+#     load — the 10-minute cadence leaves margin against Render's 15-minute
+#     idle timeout.
+#   * On a PRIVATE repo, every-10-min runs consume Actions minutes. If that's a
+#     concern, prefer the zero-cost external option (cron-job.org / UptimeRobot)
+#     documented in the README instead, and disable this workflow.
+#   * The target URL defaults to the URL the mobile app actually calls. Override
+#     it without editing this file by setting a repository variable
+#     KEEP_ALIVE_URL (Settings → Secrets and variables → Actions → Variables).
+
+on:
+  schedule:
+    # Every 10 minutes, 04:00–15:59 UTC, Mon–Fri (~07:00–18:59 EAT, covering
+    # Ugandan school hours). cron is always evaluated in UTC.
+    - cron: '*/10 4-15 * * 1-5'
+  workflow_dispatch: {}   # allow a manual "wake it now" run from the Actions tab
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the backend health endpoint
+        env:
+          # Defaults to the host the Flutter app uses (kDefaultBackendBaseUrl).
+          KEEP_ALIVE_URL: ${{ vars.KEEP_ALIVE_URL || 'https://visiolearn-backend.onrender.com/health' }}
+        run: |
+          echo "🌅 Pinging $KEEP_ALIVE_URL"
+          # A cold instance can take 30-60s to answer the first request, so use
+          # a generous per-request timeout and retry a few times before failing.
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 90 "$KEEP_ALIVE_URL" || echo "000")
+            echo "Attempt $attempt: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "✅ Backend is awake."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "❌ Backend did not return HTTP 200 after 5 attempts."
+          exit 1

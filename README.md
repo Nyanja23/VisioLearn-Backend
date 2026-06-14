@@ -229,6 +229,34 @@ Get-Service postgresql-x64-18 | Restart-Service
 
 ---
 
+## ⏰ Keeping the backend warm (Render free tier)
+
+Render's free tier spins the instance down after ~15 minutes of inactivity, so
+the first request after idle takes 30-60 seconds (a "cold start"). The mobile
+app already warms the backend up early, but during school hours it's better to
+keep the instance awake so no request is ever slow.
+
+**Option 1 — GitHub Actions (in-repo, no external account).**
+[`.github/workflows/keep-alive.yml`](.github/workflows/keep-alive.yml) pings the
+health endpoint every 10 minutes during weekday school hours. It runs
+automatically once merged to the default branch. Override the target with a
+repository variable `KEEP_ALIVE_URL` if the host changes. On a **private** repo
+this consumes Actions minutes — prefer Option 2 there.
+
+**Option 2 — External cron (zero Actions minutes).**
+Create a free monitor on [cron-job.org](https://cron-job.org) or
+[UptimeRobot](https://uptimerobot.com) that requests
+`https://<your-service>.onrender.com/health` every 10 minutes. Lightest option,
+and it doubles as uptime monitoring.
+
+> **Canonical service URL.** The live backend is
+> `https://visiolearn-backend.onrender.com` — used by the mobile app, this
+> keep-alive, and `deploy-render.yml`'s post-deploy health checks. If the host
+> ever changes, update all three so the keep-alive never warms the wrong
+> instance.
+
+---
+
 ## 🔍 Troubleshooting
 
 **Backend won't start?**
