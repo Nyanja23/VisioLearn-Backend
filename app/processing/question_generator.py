@@ -105,46 +105,131 @@ class QuestionGenerator:
         
         return questions
     
+    # Linking verbs used to split a statement into subject + predicate, e.g.
+    # "Photosynthesis is the process by which..." -> ask "What is photosynthesis?"
+    _LINKING_VERBS = (" is ", " are ", " was ", " were ")
+
+    @staticmethod
+    def _truncate(text: str, max_len: int) -> str:
+        text = text.strip()
+        return text if len(text) <= max_len else text[:max_len].rstrip() + "…"
+
     def generate_mcq_questions(self, text: str, num_questions: int = 5) -> List[Dict]:
         """
-        Generate multiple-choice questions
-        
-        Args:
-            text: Source text
-            num_questions: Number of MCQ to generate
-            
-        Returns:
-            List of MCQ question dictionaries
+        Generate content-bound multiple-choice questions.
+
+        Each question is built directly from the lesson's own sentences, with
+        the correct answer and the three distractors all drawn from the text —
+        so questions stay accurate, curriculum-aligned, and never invent facts
+        (the constrained, content-bound approach the project requires). Every
+        question carries an ``explanation`` (the source sentence) so the app can
+        teach on a wrong answer instead of only saying "incorrect".
+
+        Returns a list of dicts shaped exactly as the Flutter client expects:
+        ``question_text``, ``options`` (list of ``{text, is_correct}``),
+        ``explanation``.
         """
-        concepts = self.extract_key_concepts(text)
-        questions = []
-        
-        for i, concept in enumerate(concepts[:num_questions]):
-            if not concept["text"]:
+        import random
+
+        doc = self.nlp(text)
+        # Usable sentences: long enough to be meaningful, not headings.
+        sentences = [
+            s.text.strip()
+            for s in doc.sents
+            if len(s.text.split()) >= 6
+        ]
+        # Need at least four distinct sentences so every question has one
+        # correct answer plus three plausible distractors.
+        if len(sentences) < 4:
+            return []
+
+        # Deterministic order so the same note always yields the same quiz.
+        rng = random.Random(hash(text) & 0xFFFFFFFF)
+
+        questions: List[Dict] = []
+        used_sentences = set()
+
+        for sentence in sentences:
+            if len(questions) >= num_questions:
+                break
+            if sentence in used_sentences:
                 continue
-            
-            # Create a question about the concept
-            question_text = f"Which of the following best describes {concept['text']}?"
-            
-            # For now, use the source text as the correct answer explanation
-            # In production, use a more sophisticated method
-            options = [
-                {"text": concept["text"], "is_correct": True},
-                {"text": f"Not related to {concept['type']}", "is_correct": False},
-                {"text": "An alternative concept", "is_correct": False},
-                {"text": "A general term", "is_correct": False}
-            ]
-            
-            questions.append({
-                "question_text": question_text,
-                "question_type": "MCQ",
-                "options": options,
-                "difficulty": "MEDIUM",
-                "concept": concept["text"],
-                "concept_type": concept["type"]
-            })
-        
+
+            mcq = self._mcq_from_sentence(sentence, sentences, rng)
+            if mcq is not None:
+                used_sentences.add(sentence)
+                questions.append(mcq)
+
         return questions
+
+    def _mcq_from_sentence(
+        self, sentence: str, all_sentences: List[str], rng
+    ) -> Optional[Dict]:
+        """Build one MCQ from [sentence], or None if no good distractors exist."""
+        # Pattern A: "X is/are <predicate>" -> "What is X?" with predicate as
+        # the answer and other sentences' predicates as distractors.
+        verb = next((v for v in self._LINKING_VERBS if v in sentence), None)
+        if verb:
+            idx = sentence.index(verb)
+            subject = sentence[:idx].strip()
+            predicate = sentence[idx + len(verb):].strip().rstrip(".")
+            if 0 < len(subject) <= 60 and len(predicate) >= 3:
+                distractors = []
+                for other in all_sentences:
+                    if other == sentence:
+                        continue
+                    ov = next((v for v in self._LINKING_VERBS if v in other), None)
+                    if not ov:
+                        continue
+                    other_pred = other[other.index(ov) + len(ov):].strip().rstrip(".")
+                    cand = self._truncate(other_pred, 90)
+                    if cand and cand != predicate and cand not in distractors:
+                        distractors.append(cand)
+                    if len(distractors) >= 3:
+                        break
+                if len(distractors) >= 3:
+                    return self._assemble_mcq(
+                        question_text=f"What {verb.strip()} {self._truncate(subject, 70)}?",
+                        correct=self._truncate(predicate, 90),
+                        distractors=distractors[:3],
+                        explanation=f"From your lesson: {self._truncate(sentence, 200)}",
+                        rng=rng,
+                    )
+
+        # Pattern B (fallback): "which statement is correct?" using whole
+        # sentences. The correct option already IS the lesson statement, so no
+        # extra explanation is needed.
+        others = [self._truncate(s, 120) for s in all_sentences if s != sentence]
+        if len(others) < 3:
+            return None
+        rng.shuffle(others)
+        return self._assemble_mcq(
+            question_text="According to the lesson, which statement is correct?",
+            correct=self._truncate(sentence, 120),
+            distractors=others[:3],
+            explanation="",
+            rng=rng,
+        )
+
+    @staticmethod
+    def _assemble_mcq(
+        question_text: str,
+        correct: str,
+        distractors: List[str],
+        explanation: str,
+        rng,
+    ) -> Dict:
+        options = [{"text": correct, "is_correct": True}] + [
+            {"text": d, "is_correct": False} for d in distractors
+        ]
+        rng.shuffle(options)  # correct answer lands in a random position
+        return {
+            "question_text": question_text,
+            "question_type": "MCQ",
+            "options": options,
+            "explanation": explanation,
+            "difficulty": "MEDIUM",
+        }
     
     def generate_short_answer_questions(self, text: str, num_questions: int = 3) -> List[Dict]:
         """
