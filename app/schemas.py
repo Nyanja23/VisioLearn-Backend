@@ -36,16 +36,15 @@ class UserCreate(UserBase):
     @field_validator('password')
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
+        # Relaxed, human-friendly policy: short and memorable, but not blank.
+        # At least 6 characters with a letter and a number; no uppercase or
+        # special-character requirement (those drove forgotten passwords).
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        if not re.search(r'[A-Za-z]', v):
+            raise ValueError('Password must contain at least one letter')
         if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('Password must contain at least one special character')
+            raise ValueError('Password must contain at least one number')
         return v
 
 class UserRegisterClassTeacher(BaseModel):
@@ -58,16 +57,15 @@ class UserRegisterClassTeacher(BaseModel):
     @field_validator('password')
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
+        # Relaxed, human-friendly policy: short and memorable, but not blank.
+        # At least 6 characters with a letter and a number; no uppercase or
+        # special-character requirement (those drove forgotten passwords).
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        if not re.search(r'[A-Za-z]', v):
+            raise ValueError('Password must contain at least one letter')
         if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('Password must contain at least one special character')
+            raise ValueError('Password must contain at least one number')
         return v
 
 class UserRegisterSubjectTeacher(BaseModel):
@@ -81,16 +79,15 @@ class UserRegisterSubjectTeacher(BaseModel):
     @field_validator('password')
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
+        # Relaxed, human-friendly policy: short and memorable, but not blank.
+        # At least 6 characters with a letter and a number; no uppercase or
+        # special-character requirement (those drove forgotten passwords).
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        if not re.search(r'[A-Za-z]', v):
+            raise ValueError('Password must contain at least one letter')
         if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('Password must contain at least one special character')
+            raise ValueError('Password must contain at least one number')
         return v
 
 class UserRegisterStudent(BaseModel):
@@ -103,16 +100,15 @@ class UserRegisterStudent(BaseModel):
     @field_validator('password')
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
+        # Relaxed, human-friendly policy: short and memorable, but not blank.
+        # At least 6 characters with a letter and a number; no uppercase or
+        # special-character requirement (those drove forgotten passwords).
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        if not re.search(r'[A-Za-z]', v):
+            raise ValueError('Password must contain at least one letter')
         if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('Password must contain at least one special character')
+            raise ValueError('Password must contain at least one number')
         return v
     
     @field_validator('student_code')
@@ -133,16 +129,14 @@ class UserRegisterTeacher(BaseModel):
     @field_validator('password')
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError('Password must be at least 12 characters long')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
+        # Relaxed, human-friendly policy (see other registration schemas):
+        # at least 6 characters with a letter and a number.
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters long')
+        if not re.search(r'[A-Za-z]', v):
+            raise ValueError('Password must contain at least one letter')
         if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('Password must contain at least one special character')
+            raise ValueError('Password must contain at least one number')
         return v
 
 class UserResponse(BaseModel):
