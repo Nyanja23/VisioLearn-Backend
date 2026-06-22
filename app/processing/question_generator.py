@@ -1,6 +1,7 @@
 """AI-powered question generation from lesson content"""
 
 import json
+import re
 import spacy
 from typing import List, Dict, Optional
 from dataclasses import asdict
@@ -15,7 +16,7 @@ class QuestionGenerationError(Exception):
 
 class QuestionGenerator:
     """Generates MCQ and short-answer questions from lesson content"""
-    
+
     def __init__(self):
         """Initialize spaCy NLP model"""
         try:
@@ -25,37 +26,18 @@ class QuestionGenerator:
                 "spaCy model 'en_core_web_sm' not found. "
                 "Install with: python -m spacy download en_core_web_sm"
             )
-    
+
     def extract_key_concepts(self, text: str) -> List[Dict[str, str]]:
-        """
-        Extract key concepts (named entities and noun phrases) from text
-        
-        Args:
-            text: Input text
-            
-        Returns:
-            List of concepts with their types
-        """
+        """Extract key concepts (entities and noun phrases); top 10, de-duped."""
         doc = self.nlp(text)
         concepts = []
-        
-        # Extract named entities
+
         for ent in doc.ents:
-            concepts.append({
-                "text": ent.text,
-                "type": ent.label_,
-                "source": "entity"
-            })
-        
-        # Extract noun phrases (basic heuristic)
+            concepts.append({"text": ent.text, "type": ent.label_, "source": "entity"})
+
         for chunk in doc.noun_chunks:
-            concepts.append({
-                "text": chunk.text,
-                "type": "NOUN_PHRASE",
-                "source": "noun_chunk"
-            })
-        
-        # Remove duplicates
+            concepts.append({"text": chunk.text, "type": "NOUN_PHRASE", "source": "noun_chunk"})
+
         seen = set()
         unique_concepts = []
         for concept in concepts:
@@ -63,166 +45,254 @@ class QuestionGenerator:
             if key not in seen:
                 seen.add(key)
                 unique_concepts.append(concept)
-        
-        return unique_concepts[:10]  # Return top 10
-    
+
+        return unique_concepts[:10]
+
     def generate_fill_blank_questions(self, text: str, num_questions: int = 3) -> List[Dict]:
-        """
-        Generate fill-in-the-blank style questions
-        
-        Args:
-            text: Source text
-            num_questions: Number of questions to generate
-            
-        Returns:
-            List of question dictionaries
-        """
+        """Generate fill-in-the-blank style questions (entity-based)."""
         doc = self.nlp(text)
         questions = []
-        
-        # Find sentences with significant entities or noun phrases
-        for sent_idx, sent in enumerate(doc.sents):
+
+        for sent in doc.sents:
             if len(questions) >= num_questions:
                 break
-            
-            # Extract entities from sentence
             entities = [ent.text for ent in sent.ents]
-            
             if not entities:
                 continue
-            
-            # Create fill-in-the-blank by replacing first entity
             answer = entities[0]
             blank_sent = sent.text.replace(answer, "______", 1)
-            
             questions.append({
                 "question_text": blank_sent,
                 "question_type": "FILL_BLANK",
                 "correct_answer": answer,
                 "difficulty": "MEDIUM",
-                "source_sentence": sent.text
+                "source_sentence": sent.text,
             })
-        
+
         return questions
-    
+
     # Linking verbs used to split a statement into subject + predicate, e.g.
     # "Photosynthesis is the process by which..." -> ask "What is photosynthesis?"
     _LINKING_VERBS = (" is ", " are ", " was ", " were ")
 
+    # A subject that begins with one of these is not a real concept to ask about
+    # ("It is important", "This was the result") -- skip so we never produce a
+    # question like "What is it?".
+    _PRONOUN_SUBJECTS = {
+        "it", "this", "that", "these", "those", "they", "there",
+        "he", "she", "we", "you", "i", "here", "its", "their",
+        "his", "her", "such", "one", "some", "many", "most",
+    }
+
+    # Clause boundaries used to trim a long predicate to a short spoken phrase.
+    _CLAUSE_BREAKS = ("; ", ", ", " which ", " that ", " where ",
+                      " because ", " so that ", " in order ", " such as ")
+
+    # Words too generic to make a good fill-in-the-blank answer or distractor.
+    _STOPWORDS = {
+        "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at",
+        "for", "with", "as", "by", "from", "is", "are", "was", "were", "be",
+        "been", "being", "it", "its", "this", "that", "these", "those", "they",
+        "them", "their", "there", "here", "he", "she", "we", "you", "i", "his",
+        "her", "our", "your", "which", "who", "what", "when", "where", "why",
+        "how", "can", "will", "would", "should", "could", "may", "might", "must",
+        "has", "have", "had", "do", "does", "did", "not", "no", "all", "any",
+        "more", "most", "some", "such", "than", "then", "also", "into", "over",
+        "about", "between", "during", "through", "because", "while", "each",
+    }
+
     @staticmethod
     def _truncate(text: str, max_len: int) -> str:
         text = text.strip()
-        return text if len(text) <= max_len else text[:max_len].rstrip() + "…"
+        return text if len(text) <= max_len else text[:max_len].rstrip() + "..."
+
+    def _short_phrase(self, text: str, max_words: int = 12) -> str:
+        """Trim text to one short clause so options stay listenable by ear."""
+        text = text.strip().rstrip(".")
+        low = text.lower()
+        cut = len(text)
+        for sep in self._CLAUSE_BREAKS:
+            i = low.find(sep)
+            # Only cut at a clause break if enough words precede it, so we never
+            # reduce "the process by which plants make food" to "the process by".
+            if i > 0 and i < cut and len(text[:i].split()) >= 4:
+                cut = i
+        text = text[:cut].strip()
+        words = text.split()
+        if len(words) > max_words:
+            text = " ".join(words[:max_words])
+        return text.strip()
+
+    @staticmethod
+    def _dedupe(items: List[str]) -> List[str]:
+        seen = set()
+        out = []
+        for it in items:
+            key = it.lower().strip()
+            if key and key not in seen:
+                seen.add(key)
+                out.append(it.strip())
+        return out
+
+    @staticmethod
+    def _pick_length_matched(correct: str, candidates: List[str], n: int, rng) -> List[str]:
+        """Pick n distractors whose length is closest to correct (anti-giveaway)."""
+        target = len(correct.split())
+        pool = [c for c in candidates if c.lower().strip() != correct.lower().strip()]
+        rng.shuffle(pool)
+        pool.sort(key=lambda c: abs(len(c.split()) - target))
+        return pool[:n]
+
+    def _key_terms(self, doc) -> List[str]:
+        """Salient short noun phrases / entities used as cloze answers."""
+        terms: List[str] = []
+        for ent in doc.ents:
+            t = ent.text.strip()
+            if 1 <= len(t.split()) <= 3 and len(t) >= 3:
+                terms.append(t)
+        for nc in doc.noun_chunks:
+            t = re.sub(
+                r"^(the|a|an|this|that|these|those|its|their|his|her)\s+",
+                "", nc.text.strip(), flags=re.I,
+            ).strip()
+            if (t and 1 <= len(t.split()) <= 3 and len(t) >= 3
+                    and t.lower() not in self._STOPWORDS):
+                terms.append(t)
+        return self._dedupe(terms)
 
     def generate_mcq_questions(self, text: str, num_questions: int = 5) -> List[Dict]:
         """
-        Generate content-bound multiple-choice questions.
+        Generate content-bound, audio-friendly multiple-choice questions.
 
-        Each question is built directly from the lesson's own sentences, with
-        the correct answer and the three distractors all drawn from the text —
-        so questions stay accurate, curriculum-aligned, and never invent facts
-        (the constrained, content-bound approach the project requires). Every
-        question carries an ``explanation`` (the source sentence) so the app can
-        teach on a wrong answer instead of only saying "incorrect".
-
-        Returns a list of dicts shaped exactly as the Flutter client expects:
-        ``question_text``, ``options`` (list of ``{text, is_correct}``),
-        ``explanation``.
+        Two types, built only from the lesson's own words: definitions
+        ("What is X?") and fill-in-the-blank. Distractors are length-matched to
+        the answer and kept short so a blind student can hold all four in memory
+        by ear. The old "which of four long sentences is correct?" pattern is
+        gone -- it was unanswerable aloud.
         """
         import random
 
         doc = self.nlp(text)
-        # Usable sentences: long enough to be meaningful, not headings.
         sentences = [
             s.text.strip()
             for s in doc.sents
-            if len(s.text.split()) >= 6
+            if 6 <= len(s.text.split()) <= 40
         ]
-        # Need at least four distinct sentences so every question has one
-        # correct answer plus three plausible distractors.
-        if len(sentences) < 4:
+        if len(sentences) < 2:
             return []
 
-        # Deterministic order so the same note always yields the same quiz.
+        key_terms = self._key_terms(doc)
         rng = random.Random(hash(text) & 0xFFFFFFFF)
 
         questions: List[Dict] = []
-        used_sentences = set()
+        used: set = set()
 
         for sentence in sentences:
             if len(questions) >= num_questions:
                 break
-            if sentence in used_sentences:
+            if sentence in used:
                 continue
-
-            mcq = self._mcq_from_sentence(sentence, sentences, rng)
+            mcq = self._definition_mcq(sentence, sentences, rng)
             if mcq is not None:
-                used_sentences.add(sentence)
+                used.add(sentence)
+                questions.append(mcq)
+
+        for sentence in sentences:
+            if len(questions) >= num_questions:
+                break
+            if sentence in used:
+                continue
+            mcq = self._cloze_mcq(sentence, key_terms, rng)
+            if mcq is not None:
+                used.add(sentence)
                 questions.append(mcq)
 
         return questions
 
-    def _mcq_from_sentence(
-        self, sentence: str, all_sentences: List[str], rng
-    ) -> Optional[Dict]:
-        """Build one MCQ from [sentence], or None if no good distractors exist."""
-        # Pattern A: "X is/are <predicate>" -> "What is X?" with predicate as
-        # the answer and other sentences' predicates as distractors.
+    def _definition_mcq(self, sentence: str, all_sentences: List[str], rng) -> Optional[Dict]:
+        """'X is/are <predicate>' -> 'What is X?'. None if not a clean definition."""
         verb = next((v for v in self._LINKING_VERBS if v in sentence), None)
-        if verb:
-            idx = sentence.index(verb)
-            subject = sentence[:idx].strip()
-            predicate = sentence[idx + len(verb):].strip().rstrip(".")
-            if 0 < len(subject) <= 60 and len(predicate) >= 3:
-                distractors = []
-                for other in all_sentences:
-                    if other == sentence:
-                        continue
-                    ov = next((v for v in self._LINKING_VERBS if v in other), None)
-                    if not ov:
-                        continue
-                    other_pred = other[other.index(ov) + len(ov):].strip().rstrip(".")
-                    cand = self._truncate(other_pred, 90)
-                    if cand and cand != predicate and cand not in distractors:
-                        distractors.append(cand)
-                    if len(distractors) >= 3:
-                        break
-                if len(distractors) >= 3:
-                    return self._assemble_mcq(
-                        question_text=f"What {verb.strip()} {self._truncate(subject, 70)}?",
-                        correct=self._truncate(predicate, 90),
-                        distractors=distractors[:3],
-                        explanation=f"From your lesson: {self._truncate(sentence, 200)}",
-                        rng=rng,
-                    )
-
-        # Pattern B (fallback): "which statement is correct?" using whole
-        # sentences. The correct option already IS the lesson statement, so no
-        # extra explanation is needed.
-        others = [self._truncate(s, 120) for s in all_sentences if s != sentence]
-        if len(others) < 3:
+        if not verb:
             return None
-        rng.shuffle(others)
+
+        idx = sentence.index(verb)
+        subject = sentence[:idx].strip()
+        predicate = sentence[idx + len(verb):].strip().rstrip(".")
+
+        subj_words = subject.split()
+        if not subj_words or len(subj_words) > 6:
+            return None
+        if subj_words[0].lower() in self._PRONOUN_SUBJECTS:
+            return None
+
+        correct = self._short_phrase(predicate)
+        if len(correct) < 3:
+            return None
+
+        candidates = []
+        for other in all_sentences:
+            if other == sentence:
+                continue
+            ov = next((v for v in self._LINKING_VERBS if v in other), None)
+            if not ov:
+                continue
+            other_pred = self._short_phrase(
+                other[other.index(ov) + len(ov):].strip().rstrip(".")
+            )
+            if other_pred and other_pred.lower() != correct.lower():
+                candidates.append(other_pred)
+
+        distractors = self._pick_length_matched(correct, self._dedupe(candidates), 3, rng)
+        if len(distractors) < 3:
+            return None
+
         return self._assemble_mcq(
-            question_text="According to the lesson, which statement is correct?",
-            correct=self._truncate(sentence, 120),
-            distractors=others[:3],
-            explanation="",
+            question_text=f"What {verb.strip()} {self._short_phrase(subject, 8)}?",
+            correct=correct,
+            distractors=distractors,
+            explanation=f"From your lesson: {self._truncate(sentence, 200)}",
+            rng=rng,
+        )
+
+    def _cloze_mcq(self, sentence: str, key_terms: List[str], rng) -> Optional[Dict]:
+        """Blank a key term in sentence; answer is the term. None if unusable."""
+        present = [
+            t for t in key_terms
+            if re.search(r"\b" + re.escape(t) + r"\b", sentence, flags=re.I)
+        ]
+        if not present:
+            return None
+
+        present.sort(key=lambda t: len(t), reverse=True)
+        answer = present[0]
+
+        blanked = re.sub(
+            r"\b" + re.escape(answer) + r"\b", "blank", sentence,
+            count=1, flags=re.I,
+        )
+        if "blank" not in blanked.lower():
+            return None
+
+        others = [t for t in key_terms if t.lower() != answer.lower()]
+        distractors = self._pick_length_matched(answer, self._dedupe(others), 3, rng)
+        if len(distractors) < 3:
+            return None
+
+        return self._assemble_mcq(
+            question_text=f"Fill in the blank. {self._truncate(blanked, 180)}",
+            correct=answer,
+            distractors=distractors,
+            explanation=f"From your lesson: {self._truncate(sentence, 200)}",
             rng=rng,
         )
 
     @staticmethod
-    def _assemble_mcq(
-        question_text: str,
-        correct: str,
-        distractors: List[str],
-        explanation: str,
-        rng,
-    ) -> Dict:
+    def _assemble_mcq(question_text: str, correct: str, distractors: List[str],
+                      explanation: str, rng) -> Dict:
         options = [{"text": correct, "is_correct": True}] + [
             {"text": d, "is_correct": False} for d in distractors
         ]
-        rng.shuffle(options)  # correct answer lands in a random position
+        rng.shuffle(options)
         return {
             "question_text": question_text,
             "question_type": "MCQ",
@@ -230,31 +300,18 @@ class QuestionGenerator:
             "explanation": explanation,
             "difficulty": "MEDIUM",
         }
-    
+
     def generate_short_answer_questions(self, text: str, num_questions: int = 3) -> List[Dict]:
-        """
-        Generate short-answer discussion questions
-        
-        Args:
-            text: Source text
-            num_questions: Number of questions to generate
-            
-        Returns:
-            List of short-answer question dictionaries
-        """
+        """Generate short-answer discussion questions from key concepts."""
         questions = []
-        
-        # Heuristic: Generate "Explain" and "Discuss" questions
         prompts = [
             "Explain the concept of {concept}",
             "Describe how {concept} relates to the lesson content",
             "Discuss the importance of {concept}",
             "What is the significance of {concept}?",
-            "How does {concept} apply in practice?"
+            "How does {concept} apply in practice?",
         ]
-        
         concepts = self.extract_key_concepts(text)
-        
         for i, concept in enumerate(concepts[:num_questions]):
             prompt = prompts[i % len(prompts)]
             questions.append({
@@ -262,62 +319,29 @@ class QuestionGenerator:
                 "question_type": "SHORT_ANSWER",
                 "expected_keywords": [concept["text"]],
                 "difficulty": "MEDIUM",
-                "concept": concept["text"]
+                "concept": concept["text"],
             })
-        
         return questions
-    
-    def generate_all_questions(
-        self,
-        text: str,
-        num_mcq: int = 5,
-        num_short_answer: int = 3
-    ) -> Dict[str, List]:
-        """
-        Generate all question types from text
-        
-        Args:
-            text: Source text
-            num_mcq: Number of MCQs
-            num_short_answer: Number of short-answer questions
-            
-        Returns:
-            Dictionary with question types as keys
-        """
+
+    def generate_all_questions(self, text: str, num_mcq: int = 5,
+                               num_short_answer: int = 3) -> Dict[str, List]:
+        """Generate all question types from text."""
         return {
             "mcq": self.generate_mcq_questions(text, num_mcq),
             "short_answer": self.generate_short_answer_questions(text, num_short_answer),
-            "fill_blank": self.generate_fill_blank_questions(text, num_mcq // 2)
+            "fill_blank": self.generate_fill_blank_questions(text, num_mcq // 2),
         }
 
 
-def generate_questions(
-    text: str,
-    question_type: str = "all",
-    **kwargs
-) -> Dict[str, List]:
-    """
-    Generate questions from text using specified strategy
-    
-    Args:
-        text: Source text
-        question_type: "mcq", "short_answer", "fill_blank", or "all"
-        **kwargs: Additional parameters (num_mcq, num_short_answer, etc.)
-        
-    Returns:
-        Dictionary with generated questions
-        
-    Raises:
-        QuestionGenerationError: If generation fails
-    """
+def generate_questions(text: str, question_type: str = "all", **kwargs) -> Dict[str, List]:
+    """Generate questions from text using the specified strategy."""
     try:
         generator = QuestionGenerator()
-        
         if question_type == "all":
             return generator.generate_all_questions(
                 text,
                 num_mcq=kwargs.get('num_mcq', 5),
-                num_short_answer=kwargs.get('num_short_answer', 3)
+                num_short_answer=kwargs.get('num_short_answer', 3),
             )
         elif question_type == "mcq":
             return {"mcq": generator.generate_mcq_questions(text, kwargs.get('num_questions', 5))}
@@ -327,6 +351,5 @@ def generate_questions(
             return {"fill_blank": generator.generate_fill_blank_questions(text, kwargs.get('num_questions', 3))}
         else:
             raise ValueError(f"Unknown question type: {question_type}")
-    
     except Exception as e:
         raise QuestionGenerationError(f"Question generation failed: {str(e)}")
