@@ -390,8 +390,16 @@ def get_unit_artefacts(
         query = query.filter(models.AiArtefact.artefact_type == artefact_type)
     
     artefacts = query.all()
-    
-    return artefacts
+
+    # Students may only receive teacher-approved MCQs. Non-MCQ artefacts
+    # (e.g. summaries) are not gated. Teachers review/approve via the
+    # /api/v1/notes/{note_id}/questions endpoints.
+    visible = [
+        a for a in artefacts
+        if a.artefact_type != "MCQ" or getattr(a, "approved", False)
+    ]
+
+    return visible
 
 
 @router.post(

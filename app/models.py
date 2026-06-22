@@ -1,8 +1,12 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, Boolean, Integer, Float, ForeignKey, DateTime, Enum, Index
+from sqlalchemy import Column, String, Text, Boolean, Integer, Float, ForeignKey, DateTime, Enum, Index, JSON, false
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
+
+# JSONB on PostgreSQL, plain JSON on SQLite (local/dev) so the same models run
+# on both. SQLite has no JSONB type, which otherwise breaks table creation.
+JSONType = JSONB().with_variant(JSON(), "sqlite")
 from .database import Base
 
 def utc_now():
@@ -126,7 +130,9 @@ class AiArtefact(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     unit_id = Column(UUID(as_uuid=True), ForeignKey("learning_units.id"), nullable=False, index=True)
     artefact_type = Column(String(50), nullable=False) # MCQ, SHORT_ANSWER, SUMMARY
-    content = Column(JSONB, nullable=False)
+    content = Column(JSONType, nullable=False)
+    # Teacher-reviewed gate: students only receive MCQs with approved=True.
+    approved = Column(Boolean, default=False, nullable=False, server_default=false())
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     unit = relationship("LearningUnit", back_populates="artefacts")
@@ -179,7 +185,7 @@ class AnalyticsEvent(Base):
     __tablename__ = "analytics_events"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     event_type = Column(String(100), nullable=False, index=True)
-    event_data = Column(JSONB, nullable=False)
+    event_data = Column(JSONType, nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
