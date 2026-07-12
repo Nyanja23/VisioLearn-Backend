@@ -7,6 +7,7 @@ Teachers can upload lesson content (PDF, DOCX, TXT) for processing.
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from typing import List
 from uuid import UUID
 
@@ -49,6 +50,98 @@ def _ensure_can_upload(
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Only teachers can upload content"
+    )
+
+
+def _resolve_subject(
+    current_user: models.User,
+    subject_id: str,
+    subject_name: str,
+    db: Session,
+) -> models.ClassSubject:
+    """Find the ClassSubject a note files under, without demanding a UUID.
+
+    Priority: explicit subject_id → subject_name within the caller's own
+    class (auto-created for class teachers) → the caller's only subject.
+    A teacher should be able to go from account to published lesson in one
+    upload call; hunting for internal UUIDs was the main point of friction.
+    """
+    if subject_id:
+        try:
+            subject_uuid = UUID(subject_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid subject_id format. Must be a valid UUID."
+            )
+        class_subject = db.query(models.ClassSubject).filter(
+            models.ClassSubject.id == subject_uuid
+        ).first()
+        if not class_subject:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Subject not found"
+            )
+        return class_subject
+
+    name = (subject_name or "").strip()
+
+    if current_user.role == "class_teacher":
+        class_obj = db.query(models.Class).filter(
+            and_(
+                models.Class.class_teacher_id == current_user.id,
+                models.Class.is_deleted == False,
+            )
+        ).first()
+        if not class_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="You don't have a class yet. Register as a class teacher first."
+            )
+        if not name:
+            name = "General"
+        subject = db.query(models.ClassSubject).filter(
+            and_(
+                models.ClassSubject.class_id == class_obj.id,
+                models.ClassSubject.subject_name.ilike(name),
+            )
+        ).first()
+        if subject:
+            return subject
+        subject = models.ClassSubject(
+            class_id=class_obj.id,
+            subject_name=name,
+            subject_teacher_id=current_user.id,
+        )
+        db.add(subject)
+        db.flush()  # committed together with the note
+        return subject
+
+    if current_user.role == "subject_teacher":
+        query = db.query(models.ClassSubject).filter(
+            models.ClassSubject.subject_teacher_id == current_user.id
+        )
+        if name:
+            subject = query.filter(
+                models.ClassSubject.subject_name.ilike(name)
+            ).first()
+            if not subject:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"You don't teach a subject called '{name}'"
+                )
+            return subject
+        subjects = query.all()
+        if len(subjects) == 1:
+            return subjects[0]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You teach more than one subject — pass subject_name or subject_id"
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Pass subject_id to upload as an admin"
     )
 
 
@@ -441,8 +534,9 @@ def get_unit_artefacts(
 )
 async def upload_lesson_note_with_file(
     title: str,
-    subject_id: str,
     grade_level: str,
+    subject_id: str = None,
+    subject_name: str = None,
     file: UploadFile = File(...),
     description: str = None,
     duration_seconds: int = None,
@@ -451,21 +545,29 @@ async def upload_lesson_note_with_file(
 ):
     """
     Upload a lesson note WITH an actual file (PDF, DOCX, TXT).
-    
-    This endpoint accepts file uploads alongside metadata.
-    
+    THIS is the primary way teachers publish lessons.
+
+    The file's text is extracted on the server at upload time and becomes the
+    lesson content students receive. No subject UUID scavenger hunt needed:
+
+    - Pass `subject_name` (e.g. "Mathematics") and the subject is found — or,
+      for a class teacher, created — in your own class automatically.
+    - Pass `subject_id` only if you already know the exact subject UUID.
+    - A subject teacher with exactly one subject can omit both.
+
     Args:
         title: Lesson title
-        subject_id: UUID of the ClassSubject
-        grade_level: Target grade level
+        grade_level: Target grade level (e.g. "P.6")
+        subject_id: Optional UUID of the ClassSubject
+        subject_name: Optional subject name, resolved in your class
         file: The lesson file (PDF, DOCX, or TXT)
-        description: Optional description
+        description: Optional fallback text if extraction fails
         duration_seconds: Optional duration in seconds
-        
+
     Returns:
         LessonNoteResponse with file metadata
     """
-    
+
     # Subject teachers, class teachers (for their own class), and admins may
     # upload. The per-subject ownership check runs below, once the subject
     # has been resolved.
@@ -474,25 +576,10 @@ async def upload_lesson_note_with_file(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only teachers can upload content"
         )
-    
-    # Validate subject_id
-    try:
-        class_subject = db.query(models.ClassSubject).filter(
-            models.ClassSubject.id == UUID(subject_id)
-        ).first()
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid subject_id format. Must be a valid UUID."
-        )
-    
-    if not class_subject:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Subject not found"
-        )
-    
-    # Verify per-subject/per-class upload permission.
+
+    # Resolve which subject this note files under (may auto-create for a
+    # class teacher), then verify permission.
+    class_subject = _resolve_subject(current_user, subject_id, subject_name, db)
     _ensure_can_upload(current_user, class_subject, db)
     
     # Create LessonNote record first (to get ID for file storage)

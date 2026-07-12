@@ -123,27 +123,6 @@ class UserRegisterStudent(BaseModel):
                 'Class code must be in format SC-XXXX or TC-XXXX (e.g., SC-9FX2)')
         return v
 
-# --- Legacy schemas (deprecated, kept for reference) ---
-class UserRegisterTeacher(BaseModel):
-    """DEPRECATED: Use UserRegisterClassTeacher instead."""
-    email: EmailStr
-    full_name: str
-    password: str
-    role: Literal["teacher"] = "teacher"
-    
-    @field_validator('password')
-    @classmethod
-    def validate_password_strength(cls, v: str) -> str:
-        # Relaxed, human-friendly policy (see other registration schemas):
-        # at least 6 characters with a letter and a number.
-        if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters long')
-        if not re.search(r'[A-Za-z]', v):
-            raise ValueError('Password must contain at least one letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one number')
-        return v
-
 class UserResponse(BaseModel):
     id: UUID
     email: Optional[str] = None

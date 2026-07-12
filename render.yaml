@@ -18,11 +18,6 @@ services:
         fromDatabase:
           name: visiolearn-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: visiolearn-redis
-          property: connectionString
-          type: redis
       - key: SECRET_KEY
         sync: false
       - key: ALGORITHM
@@ -37,9 +32,7 @@ services:
     postgresVersion: 15
     region: oregon
 
-  # Redis Cache
-  - type: rserv
-    name: visiolearn-redis
-    plan: free
-    region: oregon
-    ipAllowList: []
+# NOTE: the Redis service and Celery worker were removed deliberately.
+# Question generation and summarising run on the student's device (the
+# offline-first engine); the server only stores content and extracts text
+# from uploaded files at request time. Nothing here needs a queue.
