@@ -84,6 +84,13 @@ class QuestionGenerator:
         "his", "her", "such", "one", "some", "many", "most",
     }
 
+    # Question words / conjunctions that must never be a definition subject --
+    # otherwise "Why is food important?" becomes the nonsense "What is Why?".
+    _INTERROGATIVES = {
+        "why", "what", "how", "when", "where", "who", "whom", "whose",
+        "which", "whether", "if", "because", "although", "though",
+    }
+
     # Clause boundaries used to trim a long predicate to a short spoken phrase.
     _CLAUSE_BREAKS = ("; ", ", ", " which ", " that ", " where ",
                       " because ", " so that ", " in order ", " such as ")
@@ -219,10 +226,22 @@ class QuestionGenerator:
         subject = sentence[:idx].strip()
         predicate = sentence[idx + len(verb):].strip().rstrip(".")
 
+        # A question ("Why is food important?") is not a definition.
+        if sentence.strip().endswith("?"):
+            return None
+
         subj_words = subject.split()
         if not subj_words or len(subj_words) > 6:
             return None
-        if subj_words[0].lower() in self._PRONOUN_SUBJECTS:
+        first_word = subj_words[0].lower()
+        if first_word in self._PRONOUN_SUBJECTS or first_word in self._INTERROGATIVES:
+            return None
+        # The subject must contain a real content word, not be made only of
+        # stopwords / question words.
+        def _is_content(w):
+            t = re.sub(r"[^a-z]", "", w.lower())
+            return len(t) >= 3 and t not in self._STOPWORDS and t not in self._INTERROGATIVES
+        if not any(_is_content(w) for w in subj_words):
             return None
 
         correct = self._short_phrase(predicate)
@@ -256,6 +275,8 @@ class QuestionGenerator:
 
     def _cloze_mcq(self, sentence: str, key_terms: List[str], rng) -> Optional[Dict]:
         """Blank a key term in sentence; answer is the term. None if unusable."""
+        if sentence.strip().endswith("?"):
+            return None
         present = [
             t for t in key_terms
             if re.search(r"\b" + re.escape(t) + r"\b", sentence, flags=re.I)
