@@ -114,8 +114,13 @@ class UserRegisterStudent(BaseModel):
     @field_validator('student_code')
     @classmethod
     def validate_student_code_format(cls, v: str) -> str:
-        if not re.match(r'^SC-[A-Z0-9]{4}$', v):
-            raise ValueError('Student code must be in format SC-XXXX (e.g., SC-9FX2)')
+        # Either class code joins the class (both identify it uniquely), and
+        # codes arrive from voice capture / hand-typing, so normalise case
+        # and whitespace here instead of bouncing the student.
+        v = (v or '').strip().upper()
+        if not re.match(r'^(SC|TC)-[A-Z0-9]{4}$', v):
+            raise ValueError(
+                'Class code must be in format SC-XXXX or TC-XXXX (e.g., SC-9FX2)')
         return v
 
 # --- Legacy schemas (deprecated, kept for reference) ---

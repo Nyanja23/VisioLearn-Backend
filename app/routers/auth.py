@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from datetime import datetime, timezone, timedelta
 import jwt
 
@@ -277,25 +277,33 @@ def register_student(user: schemas.UserRegisterStudent, db: Session = Depends(ge
             detail="Email already registered"
         )
     
-    # Validate student code format (SC-XXXX)
-    if not user.student_code or len(user.student_code) != 7 or not user.student_code.startswith("SC-"):
+    # Accept EITHER class code. Both SC-XXXX and TC-XXXX identify the same
+    # class, and in practice a teacher often shares whichever code they have
+    # at hand — a student turned away over the prefix is a student who never
+    # joins. Normalise case/whitespace too: codes arrive from voice capture
+    # and hand-typing on the phone.
+    code = (user.student_code or "").strip().upper()
+    if len(code) != 7 or code[:3] not in ("SC-", "TC-"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid student code format. Expected format: SC-XXXX"
+            detail="Invalid class code format. Expected format: SC-XXXX or TC-XXXX"
         )
-    
-    # Find class with this student code
+
+    # Find the class this code belongs to (either code works).
     class_obj = db.query(models.Class).filter(
         and_(
-            models.Class.student_code == user.student_code,
+            or_(
+                models.Class.student_code == code,
+                models.Class.teacher_code == code,
+            ),
             models.Class.is_deleted == False
         )
     ).first()
-    
+
     if not class_obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student code not found. Please verify the code with your class teacher."
+            detail="Class code not found. Please verify the code with your class teacher."
         )
     
     # Hash password

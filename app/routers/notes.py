@@ -18,6 +18,40 @@ from ..storage import FileManager, FileStorageError
 router = APIRouter(prefix="/api/v1/notes", tags=["notes"])
 
 
+def _ensure_can_upload(
+    current_user: models.User,
+    class_subject: models.ClassSubject,
+    db: Session,
+) -> None:
+    """Uploads are allowed for: the subject's own teacher, the CLASS teacher
+    of the class the subject belongs to, and admins. Class teachers were
+    previously locked out entirely, which made a one-teacher school unable to
+    publish notes without creating a second account."""
+    if current_user.role == "admin":
+        return
+    if current_user.role == "subject_teacher":
+        if class_subject.subject_teacher_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to upload content for this subject"
+            )
+        return
+    if current_user.role == "class_teacher":
+        class_obj = db.query(models.Class).filter(
+            models.Class.id == class_subject.class_id
+        ).first()
+        if not class_obj or class_obj.class_teacher_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only upload to subjects in your own class"
+            )
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Only teachers can upload content"
+    )
+
+
 @router.post(
     "/upload",
     response_model=schemas.LessonNoteResponse,
@@ -47,11 +81,13 @@ def upload_lesson_note(
         LessonNoteResponse with note metadata
     """
     
-    # Only subject_teachers can upload content
-    if current_user.role not in ["subject_teacher", "admin"]:
+    # Subject teachers, class teachers (for their own class), and admins may
+    # upload. The per-subject ownership check runs below, once the subject
+    # has been resolved.
+    if current_user.role not in ["subject_teacher", "class_teacher", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only subject teachers can upload content"
+            detail="Only teachers can upload content"
         )
     
     # Get the ClassSubject to verify it exists and user teaches it
@@ -71,12 +107,8 @@ def upload_lesson_note(
             detail="Subject not found"
         )
     
-    # Verify current user is the subject teacher for this subject
-    if current_user.role == "subject_teacher" and class_subject.subject_teacher_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to upload content for this subject"
-        )
+    # Verify per-subject/per-class upload permission.
+    _ensure_can_upload(current_user, class_subject, db)
     
     # Create LessonNote record with class and subject IDs
     note_id = models.uuid.uuid4()
@@ -434,11 +466,13 @@ async def upload_lesson_note_with_file(
         LessonNoteResponse with file metadata
     """
     
-    # Only subject_teachers can upload content
-    if current_user.role not in ["subject_teacher", "admin"]:
+    # Subject teachers, class teachers (for their own class), and admins may
+    # upload. The per-subject ownership check runs below, once the subject
+    # has been resolved.
+    if current_user.role not in ["subject_teacher", "class_teacher", "admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only subject teachers can upload content"
+            detail="Only teachers can upload content"
         )
     
     # Validate subject_id
@@ -458,12 +492,8 @@ async def upload_lesson_note_with_file(
             detail="Subject not found"
         )
     
-    # Verify permission
-    if current_user.role == "subject_teacher" and class_subject.subject_teacher_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to upload content for this subject"
-        )
+    # Verify per-subject/per-class upload permission.
+    _ensure_can_upload(current_user, class_subject, db)
     
     # Create LessonNote record first (to get ID for file storage)
     note_id = models.uuid.uuid4()
@@ -483,6 +513,28 @@ async def upload_lesson_note_with_file(
             detail=f"File upload failed: {str(e)[:100]}"
         )
     
+    # Extract the lesson text from the file NOW, synchronously. The student
+    # app builds the spoken lesson from `description`, so without this step a
+    # file upload reached phones as the literal text "File: notes.pdf".
+    # Extraction of txt/docx/pdf is fast and needs no Celery worker — the
+    # heavyweight AI pipeline stays optional; content flows regardless.
+    extracted_text = ""
+    try:
+        import re as _re
+        from ..processing.text_extractor import extract_from_file
+        raw_text = extract_from_file(file_path) or ""
+        # NOTE: deliberately NOT sanitize_text() — it flattens every newline
+        # into a space, and the app's lesson segmenter (spoken pauses) and
+        # question generator (heading/label detection) both depend on the
+        # note's line structure. Clean whitespace but keep the lines.
+        cleaned = _re.sub(r'[ \t]+', ' ', raw_text)
+        cleaned = _re.sub(r' ?\n ?', '\n', cleaned)
+        extracted_text = _re.sub(r'\n{3,}', '\n\n', cleaned).strip()
+        if extracted_text:
+            print(f"[+] Extracted {len(extracted_text)} chars from {file.filename}")
+    except Exception as e:
+        print(f"[!] Text extraction failed for {file.filename}: {e}")
+
     # Create LessonNote record with file information
     db_note = models.LessonNote(
         id=note_id,
@@ -492,7 +544,7 @@ async def upload_lesson_note_with_file(
         title=title,
         subject=class_subject.subject_name,
         grade_level=grade_level,
-        description=description or f"File: {file.filename}",
+        description=extracted_text or description or f"File: {file.filename}",
         duration_seconds=duration_seconds,
         file_url=file_path,
         original_file_name=file.filename,

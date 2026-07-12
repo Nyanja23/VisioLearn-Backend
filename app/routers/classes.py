@@ -148,14 +148,62 @@ def add_subject_to_class(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Class not found"
         )
-    
-    # The subject_teacher should already exist and be a subject_teacher role
-    # This is typically called after a subject_teacher has already registered
-    # For now, we expect subject_teacher_id to be provided
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Subject assignment endpoint under development. Subject teachers are automatically assigned during registration."
+
+    # A class teacher can create a subject directly. If no subject_teacher_id
+    # is given, the class teacher becomes the subject's teacher themselves —
+    # small schools often have one teacher wearing both hats, and requiring a
+    # separate subject-teacher account just to upload notes was a dead end.
+    subject_name = (subject_data.get("subject_name") or "").strip()
+    if not subject_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="subject_name is required"
+        )
+
+    teacher_id = current_user.id
+    raw_teacher_id = subject_data.get("subject_teacher_id")
+    if raw_teacher_id:
+        try:
+            teacher_id = UUID(str(raw_teacher_id))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="subject_teacher_id must be a valid UUID"
+            )
+        teacher = db.query(models.User).filter(models.User.id == teacher_id).first()
+        if not teacher or teacher.role not in ("subject_teacher", "class_teacher"):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Subject teacher not found"
+            )
+
+    # No duplicate subject names within one class — return the existing one so
+    # the call is idempotent for clients that retry.
+    existing = db.query(models.ClassSubject).filter(
+        and_(
+            models.ClassSubject.class_id == class_id,
+            models.ClassSubject.subject_name.ilike(subject_name),
+        )
+    ).first()
+    if existing:
+        return existing
+
+    db_subject = models.ClassSubject(
+        class_id=class_id,
+        subject_name=subject_name,
+        subject_teacher_id=teacher_id,
     )
+    db.add(db_subject)
+    try:
+        db.commit()
+        db.refresh(db_subject)
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not create subject"
+        )
+    return db_subject
 
 
 @router.get("/{class_id}/students", response_model=List[dict])
