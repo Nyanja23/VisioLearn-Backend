@@ -93,22 +93,29 @@ async def lifespan(app: FastAPI):
             # Don't raise - try to continue anyway
             print("[*] Continuing despite table creation errors...")
         
-        # Seed admin user if no users exist
+        # Seed admin user if no users exist. The password must come from the
+        # environment — a hardcoded one in a public repo is an open door. With
+        # no ADMIN_BOOTSTRAP_PASSWORD set, use /internal/create-admin
+        # (ADMIN_SECRET-gated) to create the first admin instead.
         db = SessionLocal()
         try:
             existing_users = db.query(models.User).first()
             if not existing_users:
-                print("[*] Creating admin user...")
-                admin = models.User(
-                    email="admin@visiolearn.org",
-                    full_name="System Administrator",
-                    role="admin",
-                    hashed_password=get_password_hash("AdminPass123!@")
-                )
-                db.add(admin)
-                db.commit()
-                db.refresh(admin)
-                print(f"[+] Admin user created: {admin.email}")
+                bootstrap_password = os.getenv("ADMIN_BOOTSTRAP_PASSWORD", "")
+                if bootstrap_password:
+                    admin = models.User(
+                        email=os.getenv("ADMIN_BOOTSTRAP_EMAIL", "admin@visiolearn.org"),
+                        full_name="System Administrator",
+                        role="admin",
+                        hashed_password=get_password_hash(bootstrap_password)
+                    )
+                    db.add(admin)
+                    db.commit()
+                    db.refresh(admin)
+                    print(f"[+] Admin user created: {admin.email}")
+                else:
+                    print("[*] No users yet and ADMIN_BOOTSTRAP_PASSWORD unset - "
+                          "create the first admin via /internal/create-admin")
             else:
                 user_count = db.query(models.User).count()
                 print(f"[+] Users already exist ({user_count} total)")

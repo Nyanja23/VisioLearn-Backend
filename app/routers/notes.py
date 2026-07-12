@@ -13,10 +13,57 @@ from uuid import UUID
 
 from .. import models, schemas, security
 from ..database import get_db
-from ..dependencies import get_current_user, require_teacher
+from ..dependencies import get_current_user
 from ..storage import FileManager, FileStorageError
 
 router = APIRouter(prefix="/api/v1/notes", tags=["notes"])
+
+
+def _create_unit_for_note(db: Session, note_id, content_text: str) -> None:
+    """Give every note one LearningUnit holding its full text.
+
+    Units are the anchor the rest of the system keys on: voice sessions
+    require a unit_id, and teacher question review stores AiArtefacts per
+    unit. Without this row, both features are dead ends for the note.
+    """
+    text = (content_text or "").strip()
+    if not text:
+        return
+    db.add(models.LearningUnit(
+        note_id=note_id,
+        sequence_number=1,
+        content_text=text,
+    ))
+
+
+def _ensure_can_view_note(
+    note: models.LessonNote,
+    current_user: models.User,
+    db: Session,
+) -> None:
+    """Read access to a note and its units/artefacts, by role."""
+    if current_user.role == "admin":
+        return
+    if note.teacher_id == current_user.id:
+        return
+    if current_user.role == "class_teacher":
+        class_obj = db.query(models.Class).filter(
+            models.Class.id == note.class_id
+        ).first()
+        if class_obj and class_obj.class_teacher_id == current_user.id:
+            return
+    if current_user.role == "student":
+        is_member = db.query(models.ClassMembership).filter(
+            models.ClassMembership.class_id == note.class_id,
+            models.ClassMembership.student_id == current_user.id,
+            models.ClassMembership.left_at == None,
+        ).first()
+        if is_member:
+            return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="You don't have permission to view this note",
+    )
 
 
 def _ensure_can_upload(
@@ -218,9 +265,12 @@ def upload_lesson_note(
         duration_seconds=upload_data.duration_seconds,
         status="READY"  # For metadata-only notes, mark as ready
     )
-    
+
     # Save to database
     db.add(db_note)
+    # The lesson text rides in `description` for JSON uploads; anchor it to a
+    # unit so voice sessions and question review work for this note.
+    _create_unit_for_note(db, note_id, upload_data.description)
     try:
         db.commit()
         db.refresh(db_note)
@@ -230,7 +280,7 @@ def upload_lesson_note(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save lesson note record"
         )
-    
+
     return db_note
 
 
@@ -272,6 +322,22 @@ def list_lesson_notes(
     elif current_user.role == "subject_teacher":
         # Subject teachers see only notes they uploaded
         query = query.filter(models.LessonNote.teacher_id == current_user.id)
+    elif current_user.role == "class_teacher":
+        # Class teachers see every note in the classes they manage (their own
+        # uploads and their subject teachers'). Previously this role fell
+        # through with NO filter and saw every note in the system.
+        managed_class_ids = [
+            c[0] for c in db.query(models.Class.id).filter(
+                models.Class.class_teacher_id == current_user.id,
+                models.Class.is_deleted == False,
+            ).all()
+        ]
+        if managed_class_ids:
+            query = query.filter(
+                models.LessonNote.class_id.in_(managed_class_ids)
+            )
+        else:
+            query = query.filter(models.LessonNote.id == None)
     elif current_user.role == "student":
         # Students see notes from subjects in their class
         # First, find all classes student is member of
@@ -312,9 +378,6 @@ def list_lesson_notes(
     # Filter by status
     if status:
         query = query.filter(models.LessonNote.status == status)
-    
-    # Get total count before pagination
-    total = query.count()
     
     # Apply pagination
     notes = query.offset(skip).limit(limit).all()
@@ -399,28 +462,40 @@ def get_lesson_note_details(
 def delete_lesson_note(
     note_id: UUID,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_teacher)
+    current_user: models.User = Depends(get_current_user)
 ):
     """
-    Delete a lesson note (soft delete)
-    
-    Only the note owner or admins can delete notes.
-    Deletes the file from disk and marks as deleted in database.
+    Delete a lesson note (soft delete).
+
+    Allowed: admins, the uploading teacher (any teacher role), and the class
+    teacher of the class the note belongs to. The previous check compared
+    against the retired "teacher" role, which never matched — any class
+    teacher could delete anyone's note, and subject teachers couldn't delete
+    their own.
     """
-    
+
     note = db.query(models.LessonNote).filter(
         models.LessonNote.id == note_id,
         models.LessonNote.is_deleted == False
     ).first()
-    
+
     if not note:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lesson note not found"
         )
-    
+
     # Check ownership
-    if current_user.role == "teacher" and current_user.id != note.teacher_id:
+    allowed = current_user.role == "admin" or note.teacher_id == current_user.id
+    if not allowed and current_user.role == "class_teacher":
+        class_obj = db.query(models.Class).filter(
+            models.Class.id == note.class_id
+        ).first()
+        allowed = (
+            class_obj is not None
+            and class_obj.class_teacher_id == current_user.id
+        )
+    if not allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete your own notes"
@@ -468,7 +543,8 @@ def get_lesson_units(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Lesson note not found"
         )
-    
+    _ensure_can_view_note(note, current_user, db)
+
     # Get units
     units = db.query(models.LearningUnit).filter(
         models.LearningUnit.note_id == note_id
@@ -499,12 +575,23 @@ def get_unit_artefacts(
         models.LearningUnit.id == unit_id,
         models.LearningUnit.note_id == note_id
     ).first()
-    
+
     if not unit:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Learning unit not found"
         )
+
+    note = db.query(models.LessonNote).filter(
+        models.LessonNote.id == note_id,
+        models.LessonNote.is_deleted == False
+    ).first()
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lesson note not found"
+        )
+    _ensure_can_view_note(note, current_user, db)
     
     # Get artefacts
     query = db.query(models.AiArtefact).filter(
@@ -637,9 +724,12 @@ async def upload_lesson_note_with_file(
         original_file_name=file.filename,
         status="READY"  # File is stored, ready for processing
     )
-    
+
     # Save to database
     db.add(db_note)
+    _create_unit_for_note(
+        db, note_id, extracted_text or description or ""
+    )
     try:
         db.commit()
         db.refresh(db_note)

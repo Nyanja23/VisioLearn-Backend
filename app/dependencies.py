@@ -86,9 +86,6 @@ require_class_teacher = RoleChecker(["admin", "class_teacher"])
 require_subject_teacher = RoleChecker(["admin", "subject_teacher"])
 require_student = RoleChecker(["student"])
 
-# Backward compatibility aliases (deprecated)
-require_teacher = require_class_teacher  # Maps old "teacher" role to "class_teacher"
-
 # Helper functions for resource ownership validation
 
 def verify_class_teacher_owns_class(class_id: UUID, current_user: User, db: Session) -> bool:

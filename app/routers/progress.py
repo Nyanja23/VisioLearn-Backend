@@ -82,20 +82,29 @@ def log_progress(
         models.ContentProgress.note_id == progress.note_id
     ).first()
     
+    # Completion percentage, most-truthful source first: a completed lesson
+    # is 100% by definition; otherwise trust the app's own figure (it knows
+    # the lesson's real length); otherwise fall back to a rough estimate
+    # against a 30-minute nominal lesson.
+    if progress.completed:
+        percentage = 100.0
+    elif progress.completion_percentage is not None:
+        percentage = min(100.0, max(0.0, progress.completion_percentage))
+    elif progress.last_position_seconds > 0:
+        percentage = min(100.0, (progress.last_position_seconds / 1800.0) * 100)
+    else:
+        percentage = 0.0
+
     if existing:
-        # Update existing progress record
+        # Update existing progress record. Never let a later partial replay
+        # erase a recorded completion.
         existing.last_position_seconds = progress.last_position_seconds
-        existing.completed = progress.completed
+        existing.completed = existing.completed or progress.completed
+        existing.completion_percentage = max(
+            existing.completion_percentage or 0.0, percentage
+        )
         existing.updated_at = datetime.now(timezone.utc)
-        
-        # Calculate completion percentage
-        # (assume average note length is ~1800 seconds = 30 minutes)
-        if existing.last_position_seconds > 0:
-            existing.completion_percentage = min(
-                100.0,
-                (existing.last_position_seconds / 1800.0) * 100
-            )
-        
+
         db_progress = existing
     else:
         # Create new progress record with class and subject context
@@ -108,10 +117,7 @@ def log_progress(
             started_at=datetime.now(timezone.utc),
             last_position_seconds=progress.last_position_seconds,
             completed=progress.completed,
-            completion_percentage=min(
-                100.0,
-                (progress.last_position_seconds / 1800.0) * 100
-            ) if progress.last_position_seconds > 0 else 0.0
+            completion_percentage=percentage
         )
         db.add(db_progress)
     

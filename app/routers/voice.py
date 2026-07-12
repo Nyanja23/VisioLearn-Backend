@@ -20,6 +20,19 @@ from ..dependencies import get_current_user
 router = APIRouter(prefix="/api/v1/voice", tags=["voice"])
 
 
+def _ensure_session_owner(session: "models.VoiceSession", user: "models.User") -> None:
+    """Voice sessions hold a student's spoken transcripts — only that student
+    (or an admin) may touch them. Without this check any authenticated user
+    could read or write any session by guessing its id."""
+    if user.role == "admin":
+        return
+    if session.student_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This voice session does not belong to you",
+        )
+
+
 # ============================================================================
 # Schema definitions for voice endpoints
 # ============================================================================
@@ -110,6 +123,13 @@ def start_voice_session(
     Only the student or admin can create a session for a student.
     """
     
+    # A student may only start sessions for themselves.
+    if current_user.role != "admin" and request.student_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only start a voice session for yourself",
+        )
+
     # Verify student exists
     student = db.query(models.User).filter(models.User.id == request.student_id).first()
     if not student:
@@ -207,6 +227,8 @@ def log_voice_interaction(
             detail=f"Voice session not found: {request.session_id}"
         )
     
+    _ensure_session_owner(session, current_user)
+
     if session.status != "ACTIVE":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -290,6 +312,8 @@ def end_voice_session(
             detail=f"Voice session not found: {request.session_id}"
         )
     
+    _ensure_session_owner(session, current_user)
+
     # Mark session as completed
     session.status = "COMPLETED"
     session.completed_at = datetime.now(timezone.utc)
@@ -346,6 +370,8 @@ def get_voice_session(
             detail=f"Voice session not found: {session_id}"
         )
     
+    _ensure_session_owner(session, current_user)
+
     return VoiceSessionStartResponse(
         session_id=session.id,
         student_id=session.student_id,
@@ -376,6 +402,8 @@ def get_session_interactions(
             detail=f"Voice session not found: {session_id}"
         )
     
+    _ensure_session_owner(session, current_user)
+
     interactions = db.query(models.VoiceInteraction).filter(
         models.VoiceInteraction.session_id == session_id
     ).order_by(models.VoiceInteraction.sequence_number).all()

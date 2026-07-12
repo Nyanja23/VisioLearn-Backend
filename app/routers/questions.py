@@ -9,9 +9,15 @@ student.
 
 Endpoints:
 - GET    /api/v1/notes/{note_id}/questions   list all MCQs in a note for review
+- POST   /api/v1/notes/{note_id}/questions   push generated MCQs for review
 - PATCH  /api/v1/questions/{artefact_id}      edit question text/options/explanation
 - POST   /api/v1/questions/{artefact_id}/approve   approve (or un-approve)
 - DELETE /api/v1/questions/{artefact_id}      delete a bad question
+
+Question generation itself happens on the teacher's phone (the offline
+generator is the engine); the app pushes the results here right after a note
+upload so the teacher can review them from any device and the approval gate
+has something to guard.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -52,6 +58,16 @@ class QuestionUpdate(BaseModel):
 
 class ApproveRequest(BaseModel):
     approved: bool = True
+
+
+class QuestionCreateItem(BaseModel):
+    question_text: str
+    options: List[OptionModel]
+    explanation: str = ""
+
+
+class QuestionBulkCreate(BaseModel):
+    questions: List[QuestionCreateItem]
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +149,89 @@ def list_questions_for_review(
         models.AiArtefact.artefact_type == "MCQ",
     ).all()
     return [_to_item(a) for a in artefacts]
+
+
+@router.post(
+    "/notes/{note_id}/questions",
+    response_model=List[QuestionReviewItem],
+    status_code=status.HTTP_201_CREATED,
+)
+def push_questions_for_review(
+    note_id: UUID,
+    body: QuestionBulkCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Store app-generated MCQs as unapproved artefacts on a note.
+
+    Idempotent-ish: a question whose text already exists on the note is
+    skipped, so re-pushing after a flaky connection can't duplicate the
+    review list. Notes created before units existed get their unit here.
+    """
+    note = db.query(models.LessonNote).filter(
+        models.LessonNote.id == note_id,
+        models.LessonNote.is_deleted == False,
+    ).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Lesson note not found")
+    _ensure_note_owner(note, current_user)
+
+    unit = (
+        db.query(models.LearningUnit)
+        .filter(models.LearningUnit.note_id == note_id)
+        .order_by(models.LearningUnit.sequence_number)
+        .first()
+    )
+    if unit is None:
+        content = (note.description or note.title or "").strip()
+        unit = models.LearningUnit(
+            note_id=note_id,
+            sequence_number=1,
+            content_text=content or note.title,
+        )
+        db.add(unit)
+        db.flush()
+
+    existing_texts = {
+        (a.content or {}).get("question_text", "").strip().lower()
+        for a in db.query(models.AiArtefact).filter(
+            models.AiArtefact.unit_id == unit.id,
+            models.AiArtefact.artefact_type == "MCQ",
+        ).all()
+    }
+
+    created: List[models.AiArtefact] = []
+    for q in body.questions:
+        text = q.question_text.strip()
+        if not text or text.lower() in existing_texts:
+            continue
+        if len(q.options) < 2:
+            continue
+        artefact = models.AiArtefact(
+            unit_id=unit.id,
+            artefact_type="MCQ",
+            content={
+                "question_text": text,
+                "options": [
+                    {"text": o.text, "is_correct": o.is_correct}
+                    for o in q.options
+                ],
+                "explanation": q.explanation,
+            },
+            approved=False,  # the teacher approves in the review screen
+        )
+        db.add(artefact)
+        created.append(artefact)
+        existing_texts.add(text.lower())
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save questions: {e}")
+    for a in created:
+        db.refresh(a)
+    return [_to_item(a) for a in created]
 
 
 @router.patch("/questions/{artefact_id}", response_model=QuestionReviewItem)

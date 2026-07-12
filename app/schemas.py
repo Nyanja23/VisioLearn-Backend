@@ -7,6 +7,22 @@ import re
 # Valid user roles for new class-based system
 UserRole = Literal["admin", "class_teacher", "subject_teacher", "student"]
 
+
+def _check_password_strength(v: str) -> str:
+    """Shared password policy for every registration schema.
+
+    Relaxed, human-friendly: at least 6 characters with a letter and a
+    number; no uppercase or special-character requirement (those drove
+    forgotten passwords in the field).
+    """
+    if len(v) < 6:
+        raise ValueError('Password must be at least 6 characters long')
+    if not re.search(r'[A-Za-z]', v):
+        raise ValueError('Password must contain at least one letter')
+    if not re.search(r'\d', v):
+        raise ValueError('Password must contain at least one number')
+    return v
+
 # --- Token Schemas ---
 class Token(BaseModel):
     access_token: str
@@ -32,20 +48,8 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
-    
-    @field_validator('password')
-    @classmethod
-    def validate_password_strength(cls, v: str) -> str:
-        # Relaxed, human-friendly policy: short and memorable, but not blank.
-        # At least 6 characters with a letter and a number; no uppercase or
-        # special-character requirement (those drove forgotten passwords).
-        if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters long')
-        if not re.search(r'[A-Za-z]', v):
-            raise ValueError('Password must contain at least one letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one number')
-        return v
+
+    _password_strength = field_validator('password')(_check_password_strength)
 
 class UserRegisterClassTeacher(BaseModel):
     """Class teacher registration. System auto-generates student_code and teacher_code for class."""
@@ -53,20 +57,8 @@ class UserRegisterClassTeacher(BaseModel):
     full_name: str
     password: str
     class_name: str
-    
-    @field_validator('password')
-    @classmethod
-    def validate_password_strength(cls, v: str) -> str:
-        # Relaxed, human-friendly policy: short and memorable, but not blank.
-        # At least 6 characters with a letter and a number; no uppercase or
-        # special-character requirement (those drove forgotten passwords).
-        if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters long')
-        if not re.search(r'[A-Za-z]', v):
-            raise ValueError('Password must contain at least one letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one number')
-        return v
+
+    _password_strength = field_validator('password')(_check_password_strength)
 
 class UserRegisterSubjectTeacher(BaseModel):
     """Subject teacher registration. Optionally joins class using teacher_code."""
@@ -75,20 +67,8 @@ class UserRegisterSubjectTeacher(BaseModel):
     password: str
     teacher_code: Optional[str] = None
     subject_name: Optional[str] = None
-    
-    @field_validator('password')
-    @classmethod
-    def validate_password_strength(cls, v: str) -> str:
-        # Relaxed, human-friendly policy: short and memorable, but not blank.
-        # At least 6 characters with a letter and a number; no uppercase or
-        # special-character requirement (those drove forgotten passwords).
-        if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters long')
-        if not re.search(r'[A-Za-z]', v):
-            raise ValueError('Password must contain at least one letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one number')
-        return v
+
+    _password_strength = field_validator('password')(_check_password_strength)
 
 class UserRegisterStudent(BaseModel):
     """Student self-registration. Must provide valid student code to join class."""
@@ -96,21 +76,9 @@ class UserRegisterStudent(BaseModel):
     full_name: str
     password: str
     student_code: str
-    
-    @field_validator('password')
-    @classmethod
-    def validate_password_strength(cls, v: str) -> str:
-        # Relaxed, human-friendly policy: short and memorable, but not blank.
-        # At least 6 characters with a letter and a number; no uppercase or
-        # special-character requirement (those drove forgotten passwords).
-        if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters long')
-        if not re.search(r'[A-Za-z]', v):
-            raise ValueError('Password must contain at least one letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one number')
-        return v
-    
+
+    _password_strength = field_validator('password')(_check_password_strength)
+
     @field_validator('student_code')
     @classmethod
     def validate_student_code_format(cls, v: str) -> str:
@@ -260,9 +228,6 @@ class LessonNoteListResponse(BaseModel):
     teacher_id: UUID
     class_id: UUID
     subject_id: UUID
-    
-    class Config:
-        from_attributes = True
 
     class Config:
         from_attributes = True
@@ -294,10 +259,16 @@ class AIArtefactResponse(BaseModel):
 
 # --- Progress Schemas ---
 class ContentProgressCreate(BaseModel):
-    """Log content progress when student plays audio"""
+    """Log content progress when student plays audio.
+
+    completion_percentage comes from the app, which knows the real lesson
+    length (the server does not — notes are text, duration varies by speech
+    rate). When omitted, the server falls back to a rough estimate.
+    """
     note_id: UUID
     last_position_seconds: int
     completed: bool
+    completion_percentage: Optional[float] = None
 
 class ContentProgressResponse(BaseModel):
     id: UUID

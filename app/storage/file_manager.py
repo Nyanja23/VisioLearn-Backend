@@ -143,13 +143,19 @@ class FileManager:
                 detail="File content doesn't match declared type"
             )
 
+        # Strip any directory components from the client-supplied name — a
+        # filename like "..\\..\\evil.txt" must not escape the note's folder.
+        safe_name = Path(file.filename).name
+        if not safe_name:
+            safe_name = f"upload{detected_ext}"
+
         # Extension mismatch warning (but allow it)
-        _, claimed_ext = os.path.splitext(file.filename)
+        _, claimed_ext = os.path.splitext(safe_name)
         if detected_ext != claimed_ext.lower():
             # Use detected extension for safety
-            filename = f"{os.path.splitext(file.filename)[0]}{detected_ext}"
+            filename = f"{os.path.splitext(safe_name)[0]}{detected_ext}"
         else:
-            filename = file.filename
+            filename = safe_name
 
         # Create directory structure: uploads/notes/{note_id}/
         note_dir = Path(UPLOAD_DIR) / str(note_id)

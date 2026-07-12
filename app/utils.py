@@ -12,23 +12,6 @@ _SPEECH_SAFE_CHARS = ''.join(
 )
 
 
-def generate_class_code() -> str:
-    """
-    Generate a unique class code for teachers.
-    Format: XX-XXXX (e.g., AB-2345)
-    - 2 uppercase letters
-    - hyphen
-    - 4 digits
-    Ambiguous characters (O/0, I/1) are excluded so codes survive the
-    voice-first join flow on student devices.
-    """
-    letters = ''.join(random.choices(
-        ''.join(c for c in string.ascii_uppercase if c not in 'OI'), k=2))
-    numbers = ''.join(random.choices(
-        ''.join(c for c in string.digits if c not in '01'), k=4))
-    return f"{letters}-{numbers}"
-
-
 def generate_student_code() -> str:
     """
     Generate a unique student code for joining classes.
