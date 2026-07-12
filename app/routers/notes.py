@@ -696,7 +696,12 @@ async def upload_lesson_note_with_file(
     try:
         import re as _re
         from ..processing.text_extractor import extract_from_file
-        raw_text = extract_from_file(file_path) or ""
+        # save_upload_file returns a path RELATIVE to the upload dir; the
+        # extractor opens by absolute path. Passing the relative path meant
+        # the file was never found, extraction silently failed, and every
+        # note fell back to the literal "File: <name>" text students heard.
+        full_path = str(FileManager.get_file_full_path(file_path))
+        raw_text = extract_from_file(full_path) or ""
         # NOTE: deliberately NOT sanitize_text() — it flattens every newline
         # into a space, and the app's lesson segmenter (spoken pauses) and
         # question generator (heading/label detection) both depend on the
