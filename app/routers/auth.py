@@ -357,6 +357,84 @@ def register_legacy(user: schemas.UserRegisterClassTeacher, db: Session = Depend
     )
 
 
+@router.get("/me")
+def get_me(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Who the caller is, plus the class and subjects they belong to.
+
+    This is what lets a teacher sign in on a fresh device and get their real
+    name, class codes, class id and subject ids back WITHOUT depending on
+    having uploaded any notes yet. Students get their class too. One endpoint,
+    every role — the app no longer has to reconstruct identity from notes.
+    """
+    result = {
+        "id": str(current_user.id),
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "role": current_user.role,
+        "class_id": None,
+        "class_name": None,
+        "student_code": None,
+        "teacher_code": None,
+        "subjects": [],
+    }
+
+    def subject_dicts(subjects):
+        return [
+            {
+                "id": str(s.id),
+                "subject_name": s.subject_name,
+                "class_id": str(s.class_id),
+            }
+            for s in subjects
+        ]
+
+    if current_user.role == "class_teacher":
+        cls = db.query(models.Class).filter(
+            models.Class.class_teacher_id == current_user.id,
+            models.Class.is_deleted == False,
+        ).order_by(models.Class.created_at).first()
+        if cls:
+            result["class_id"] = str(cls.id)
+            result["class_name"] = cls.class_name
+            result["student_code"] = cls.student_code
+            result["teacher_code"] = cls.teacher_code
+            result["subjects"] = subject_dicts(
+                db.query(models.ClassSubject).filter(
+                    models.ClassSubject.class_id == cls.id
+                ).all()
+            )
+    elif current_user.role == "subject_teacher":
+        subjects = db.query(models.ClassSubject).filter(
+            models.ClassSubject.subject_teacher_id == current_user.id
+        ).all()
+        result["subjects"] = subject_dicts(subjects)
+        if subjects:
+            cls = db.query(models.Class).filter(
+                models.Class.id == subjects[0].class_id
+            ).first()
+            if cls:
+                result["class_id"] = str(cls.id)
+                result["class_name"] = cls.class_name
+    elif current_user.role == "student":
+        membership = db.query(models.ClassMembership).filter(
+            models.ClassMembership.student_id == current_user.id,
+            models.ClassMembership.left_at == None,
+        ).first()
+        if membership:
+            cls = db.query(models.Class).filter(
+                models.Class.id == membership.class_id
+            ).first()
+            if cls:
+                result["class_id"] = str(cls.id)
+                result["class_name"] = cls.class_name
+                result["student_code"] = cls.student_code
+
+    return result
+
+
 @router.post("/login", response_model=schemas.Token)
 def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
     # Normalize email to lowercase for case-insensitive comparison
